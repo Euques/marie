@@ -1,0 +1,6 @@
+{
+  "name": "Chá de Panela",
+  "description": "Painel completo para noivas organizarem o chá de panela, gerenciarem lista de convidados, confirmações (RSVP) e lista de presentes interativa para convidados.",
+  "requestFramePermissions": [],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}
