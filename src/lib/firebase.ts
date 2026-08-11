@@ -1,6 +1,7 @@
 import { initializeApp, getApps, getApp } from 'firebase/app';
 import { 
   getFirestore, 
+  initializeFirestore,
   doc, 
   setDoc, 
   getDoc, 
@@ -20,6 +21,7 @@ import {
   signInWithPopup,
   signOut,
   onAuthStateChanged,
+  signInAnonymously,
   User as FirebaseUser
 } from 'firebase/auth';
 import { EventInfo, Gift, Guest } from '../types';
@@ -28,11 +30,42 @@ import appletConfig from '../../firebase-applet-config.json';
 
 export const firebaseConfig = appletConfig as any;
 
+// Helper to remove 'undefined' values before passing to Firestore setDoc
+export function cleanForFirestore<T>(data: T): T {
+  if (data === null || data === undefined || typeof data !== 'object') {
+    return data;
+  }
+  return JSON.parse(JSON.stringify(data, (_key, value) => (value === undefined ? null : value)));
+}
+
 // Initialize Firebase App
-export const app = getApps().length > 0 ? getApp() : initializeApp(firebaseConfig);
-export const db = getFirestore(app, firebaseConfig.firestoreDatabaseId);
+const existingApps = getApps();
+export const app = existingApps.length > 0 ? existingApps[0] : initializeApp(firebaseConfig);
+
+// Initialize Firestore properly with ignoreUndefinedProperties
+export const db = (() => {
+  try {
+    return initializeFirestore(app, {
+      ignoreUndefinedProperties: true
+    }, firebaseConfig.firestoreDatabaseId);
+  } catch {
+    return getFirestore(app, firebaseConfig.firestoreDatabaseId);
+  }
+})();
+
 export const auth = getAuth(app);
 export const storage = getStorage(app);
+
+// Helper to ensure an authenticated session exists
+export async function ensureAuth(): Promise<void> {
+  if (!auth.currentUser) {
+    try {
+      await signInAnonymously(auth);
+    } catch (err) {
+      console.warn('Anonymous auth notice:', err);
+    }
+  }
+}
 
 // Error handling standard per Firebase skill
 export enum OperationType {
@@ -60,7 +93,15 @@ export function handleFirestoreError(error: unknown, operationType: OperationTyp
 }
 
 // Upload Photo directly to Firebase Storage
-export async function uploadPhotoToStorage(fileOrBase64: File | string, folder: string = 'couples'): Promise<string> {
+export async function uploadPhotoToStorage(fileOrBase64: File | string, folder: string = 'couples'): Promise<string | null> {
+  if (!auth.currentUser) {
+    try {
+      await signInAnonymously(auth);
+    } catch (authErr) {
+      console.warn('Silent anonymous auth for Firebase Storage upload:', authErr);
+    }
+  }
+
   const uid = auth.currentUser?.uid || 'guest';
   const fileName = `photo_${Date.now()}_${Math.random().toString(36).substring(2, 7)}.jpg`;
   const fileReference = storageRef(storage, `${folder}/${uid}/${fileName}`);
@@ -78,15 +119,17 @@ export async function uploadPhotoToStorage(fileOrBase64: File | string, folder: 
       return downloadUrl;
     }
   } catch (error) {
-    console.warn('Firebase Storage direct upload notice:', error);
-    throw error;
+    console.warn('Firebase Storage direct upload not authorized:', error);
+    return null;
   }
 }
 
 // Test Connection
 export async function testFirebaseConnection(): Promise<boolean> {
   try {
-    await getDocFromServer(doc(db, 'test', 'connection'));
+    await ensureAuth();
+    const testDocRef = doc(db, 'test', 'ping');
+    await setDoc(testDocRef, cleanForFirestore({ ping: true, timestamp: new Date().toISOString() }), { merge: true });
     return true;
   } catch (error) {
     if (error instanceof Error && error.message.includes('the client is offline')) {
@@ -100,27 +143,33 @@ export async function testFirebaseConnection(): Promise<boolean> {
 // Direct Firestore Event Syncing Functions
 export async function saveEventInfoToFirestore(info: Partial<EventInfo>): Promise<void> {
   try {
+    await ensureAuth();
     const mainRef = doc(db, 'event_info', 'main');
     const coupleRef = doc(db, 'couples', 'default');
-    const payload = { ...info, updatedAt: new Date().toISOString() };
+    const payload = cleanForFirestore({ ...info, updatedAt: new Date().toISOString() });
     await setDoc(mainRef, payload, { merge: true });
     await setDoc(coupleRef, { eventInfo: payload, updatedAt: new Date().toISOString() }, { merge: true });
   } catch (err) {
     handleFirestoreError(err, OperationType.WRITE, 'event_info/main');
+    throw err;
   }
 }
 
 export async function saveGiftToFirestore(gift: Gift): Promise<void> {
   try {
+    await ensureAuth();
     const giftRef = doc(db, 'gifts', gift.id);
-    await setDoc(giftRef, { ...gift, updatedAt: new Date().toISOString() }, { merge: true });
+    const payload = cleanForFirestore({ ...gift, updatedAt: new Date().toISOString() });
+    await setDoc(giftRef, payload, { merge: true });
   } catch (err) {
     handleFirestoreError(err, OperationType.WRITE, `gifts/${gift.id}`);
+    throw err;
   }
 }
 
 export async function deleteGiftFromFirestore(giftId: string): Promise<void> {
   try {
+    await ensureAuth();
     const giftRef = doc(db, 'gifts', giftId);
     await deleteDoc(giftRef);
   } catch (err) {
@@ -130,15 +179,19 @@ export async function deleteGiftFromFirestore(giftId: string): Promise<void> {
 
 export async function saveGuestToFirestore(guest: Guest): Promise<void> {
   try {
+    await ensureAuth();
     const guestRef = doc(db, 'guests', guest.id);
-    await setDoc(guestRef, { ...guest, updatedAt: new Date().toISOString() }, { merge: true });
+    const payload = cleanForFirestore({ ...guest, updatedAt: new Date().toISOString() });
+    await setDoc(guestRef, payload, { merge: true });
   } catch (err) {
     handleFirestoreError(err, OperationType.WRITE, `guests/${guest.id}`);
+    throw err;
   }
 }
 
 export async function deleteGuestFromFirestore(guestId: string): Promise<void> {
   try {
+    await ensureAuth();
     const guestRef = doc(db, 'guests', guestId);
     await deleteDoc(guestRef);
   } catch (err) {
@@ -149,6 +202,7 @@ export async function deleteGuestFromFirestore(guestId: string): Promise<void> {
 // Synchronize all data into Firestore
 export async function syncAllToFirestore(appData: { eventInfo?: EventInfo | null; gifts?: Gift[]; guests?: Guest[] }): Promise<boolean> {
   try {
+    await ensureAuth();
     if (appData.eventInfo) {
       await saveEventInfoToFirestore(appData.eventInfo);
     }
@@ -263,21 +317,22 @@ export async function saveAdminToFirestore(user: FirebaseUser, role: string = 'b
 
 export async function saveCoupleToFirestore(uid: string, eventInfo: any, gifts?: any[], guests?: any[]) {
   try {
+    await ensureAuth();
     const coupleRef = doc(db, 'couples', uid);
     const defaultRef = doc(db, 'couples', 'default');
     const mainRef = doc(db, 'event_info', 'main');
 
-    const docData = {
+    const docData = cleanForFirestore({
       uid,
       eventInfo,
       gifts: gifts || [],
       guests: guests || [],
       updatedAt: new Date().toISOString()
-    };
+    });
     await setDoc(coupleRef, docData, { merge: true });
     await setDoc(defaultRef, docData, { merge: true });
     if (eventInfo) {
-      await setDoc(mainRef, { ...eventInfo, updatedAt: new Date().toISOString() }, { merge: true });
+      await setDoc(mainRef, cleanForFirestore({ ...eventInfo, updatedAt: new Date().toISOString() }), { merge: true });
     }
   } catch (e) {
     handleFirestoreError(e, OperationType.WRITE, `couples/${uid}`);
