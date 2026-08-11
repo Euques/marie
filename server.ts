@@ -3,14 +3,26 @@ import path from 'path';
 import fs from 'fs';
 import { fileURLToPath } from 'url';
 import { createServer as createViteServer } from 'vite';
-import { initialData } from './src/data/initialData.js';
-import { AppData, Gift, Guest, EventInfo } from './src/types.js';
+import { initialData } from './src/data/initialData';
+import { AppData, Gift, Guest, EventInfo } from './src/types';
 
-const __filename = fileURLToPath(import.meta.url);
-const __dirname = path.dirname(__filename);
+const getAppDir = () => {
+  if (typeof __dirname !== 'undefined' && __dirname) {
+    return __dirname;
+  }
+  if (typeof import.meta !== 'undefined' && import.meta && import.meta.url) {
+    try {
+      return path.dirname(fileURLToPath(import.meta.url));
+    } catch {
+      // fallback
+    }
+  }
+  return process.cwd();
+};
 
+const APP_DIR = getAppDir();
 const PORT = process.env.PORT ? parseInt(process.env.PORT, 10) : 3000;
-const DATA_DIR = path.join(__dirname, 'data');
+const DATA_DIR = path.join(process.cwd(), 'data');
 const DB_FILE = path.join(DATA_DIR, 'database.json');
 
 // Ensure data directory exists
@@ -47,7 +59,7 @@ function saveData(data: AppData) {
 
 let db = loadData();
 
-const UPLOADS_DIR = path.join(__dirname, 'public', 'uploads');
+const UPLOADS_DIR = path.join(process.cwd(), 'public', 'uploads');
 if (!fs.existsSync(UPLOADS_DIR)) {
   fs.mkdirSync(UPLOADS_DIR, { recursive: true });
 }
