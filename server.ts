@@ -373,6 +373,16 @@ async function startServer() {
     res.json({ success: true, message: 'Dados restaurados para o padrão original.' });
   });
 
+  // Favicon handler
+  app.get(['/favicon.ico', '/favicon.svg'], (req, res) => {
+    const faviconPath = path.join(process.cwd(), 'public', 'favicon.svg');
+    if (fs.existsSync(faviconPath)) {
+      res.setHeader('Content-Type', 'image/svg+xml');
+      return res.sendFile(faviconPath);
+    }
+    res.status(404).end();
+  });
+
   // Vite Integration
   if (process.env.NODE_ENV !== 'production') {
     const vite = await createViteServer({
@@ -383,7 +393,15 @@ async function startServer() {
   } else {
     const distPath = path.join(process.cwd(), 'dist');
     if (fs.existsSync(distPath)) {
-      app.use(express.static(distPath));
+      app.use(express.static(distPath, {
+        setHeaders: (res, filepath) => {
+          if (filepath.endsWith('index.html')) {
+            res.setHeader('Cache-Control', 'no-cache, no-store, must-revalidate, max-age=0');
+          } else if (filepath.includes('/assets/')) {
+            res.setHeader('Cache-Control', 'public, max-age=31536000, immutable');
+          }
+        }
+      }));
     }
     app.get('*', (req, res) => {
       // If the request is for an asset or script module, return 404 instead of index.html
@@ -397,6 +415,7 @@ async function startServer() {
 
       const indexPath = path.join(distPath, 'index.html');
       if (fs.existsSync(indexPath)) {
+        res.setHeader('Cache-Control', 'no-cache, no-store, must-revalidate, max-age=0');
         res.sendFile(indexPath);
       } else {
         res.status(404).send('Application build files not found.');
