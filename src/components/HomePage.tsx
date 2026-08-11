@@ -179,239 +179,230 @@ export const HomePage: React.FC<HomePageProps> = ({
 
       </div>
 
-      {/* 2. CARD DE LISTA DE PRESENTES (EMBAIXO DO CARD DOS NOIVOS) */}
-      <div className="bg-gradient-to-r from-[#2D2D2D] via-[#1E1E1E] to-[#2D2D2D] text-white p-6 sm:p-8 rounded-[2rem] shadow-xl border border-[#C5A059]/40 flex flex-col sm:flex-row items-center justify-between gap-6 transition-all hover:border-[#C5A059]">
-        <div className="flex items-center space-x-4">
-          <div className="w-14 h-14 rounded-2xl bg-[#C5A059] text-white flex items-center justify-center shrink-0 shadow-md">
-            <GiftIcon className="w-7 h-7" />
-          </div>
-          <div>
-            <span className="text-[10px] uppercase tracking-[0.2em] font-bold text-[#C5A059] bg-[#C5A059]/20 px-2.5 py-0.5 rounded-full border border-[#C5A059]/30 mb-1 inline-block">
-              Lista de Presentes
-            </span>
-            <h3 className="font-bold text-xl sm:text-2xl text-white leading-tight">
-              Presentear os Noivos
-            </h3>
-            <p className="text-xs text-stone-300 mt-0.5">
-              {availableGiftsCount > 0 
-                ? `${availableGiftsCount} ${availableGiftsCount === 1 ? 'presente disponível' : 'presentes disponíveis'} na lista`
-                : 'Confira a lista completa de presentes do casal'}
-            </p>
-          </div>
-        </div>
-
-        <button
-          onClick={() => onNavigate('presentes')}
-          className="w-full sm:w-auto px-6 py-3.5 bg-[#C5A059] hover:bg-[#B38F48] text-white text-xs font-bold uppercase tracking-wider rounded-xl transition flex items-center justify-center space-x-2 shrink-0 shadow-md active:scale-95"
-        >
-          <span>Ver Lista de Presentes</span>
-          <ArrowRight className="w-4 h-4" />
-        </button>
-      </div>
-
-      {/* 3. ACCORDION: CONFIRMAÇÃO DE PRESENÇA (RSVP) */}
-      <div id="confirmar-presenca" className="bg-white rounded-2xl shadow-xs border border-[#E5DFD5] overflow-hidden transition-all">
-        <button
-          type="button"
-          onClick={() => setIsRsvpOpen(!isRsvpOpen)}
-          className="w-full p-4 sm:p-5 bg-[#FAF9F6] hover:bg-[#F2ECE4] flex items-center justify-between transition cursor-pointer text-left"
-        >
-          <div className="flex items-center space-x-3 min-w-0">
-            <div className="w-10 h-10 rounded-xl bg-[#2D2D2D] text-[#C5A059] flex items-center justify-center shrink-0 shadow-2xs">
-              <Users className="w-5 h-5" />
+      {/* 2. CARD DE LISTA DE PRESENTES (APENAS PARA USUÁRIOS LOGADOS) */}
+      {guestSession && (
+        <div className="bg-gradient-to-r from-[#2D2D2D] via-[#1E1E1E] to-[#2D2D2D] text-white p-6 sm:p-8 rounded-[2rem] shadow-xl border border-[#C5A059]/40 flex flex-col sm:flex-row items-center justify-between gap-6 transition-all hover:border-[#C5A059]">
+          <div className="flex items-center space-x-4">
+            <div className="w-14 h-14 rounded-2xl bg-[#C5A059] text-white flex items-center justify-center shrink-0 shadow-md">
+              <GiftIcon className="w-7 h-7" />
             </div>
-            <div className="min-w-0">
-              <h2 className="text-sm sm:text-base font-bold text-[#2D2D2D] truncate">
-                Confirmação de Presença
-              </h2>
-              <p className="text-[11px] text-[#2D2D2D]/60 font-sans truncate">
-                {guestSession ? `Convidado: ${guestSession.name}` : 'Confirme sua presença ou aceite o convite'}
+            <div>
+              <span className="text-[10px] uppercase tracking-[0.2em] font-bold text-[#C5A059] bg-[#C5A059]/20 px-2.5 py-0.5 rounded-full border border-[#C5A059]/30 mb-1 inline-block">
+                Lista de Presentes
+              </span>
+              <h3 className="font-bold text-xl sm:text-2xl text-white leading-tight">
+                Presentear os Noivos
+              </h3>
+              <p className="text-xs text-stone-300 mt-0.5">
+                {availableGiftsCount > 0 
+                  ? `${availableGiftsCount} ${availableGiftsCount === 1 ? 'presente disponível' : 'presentes disponíveis'} na lista`
+                  : 'Confira a lista completa de presentes do casal'}
               </p>
             </div>
           </div>
-          <div className="flex items-center space-x-1.5 shrink-0 ml-2">
-            <span className="text-[10px] font-bold text-[#C5A059] uppercase tracking-wider hidden sm:inline">
-              {isRsvpOpen ? 'Recolher' : 'Expandir'}
+
+          <button
+            onClick={() => onNavigate('presentes')}
+            className="w-full sm:w-auto px-6 py-3.5 bg-[#C5A059] hover:bg-[#B38F48] text-white text-xs font-bold uppercase tracking-wider rounded-xl transition flex items-center justify-center space-x-2 shrink-0 shadow-md active:scale-95 cursor-pointer"
+          >
+            <span>Ver Lista de Presentes</span>
+            <ArrowRight className="w-4 h-4" />
+          </button>
+        </div>
+      )}
+
+      {/* 3. CARD DE CONVITE (FORA DO ACCORDION) OU FORMULÁRIO RSVP (SE LOGADO) */}
+      {!guestSession ? (
+        /* CARD DE CONVITE DIRETO NA PÁGINA (SEM ACCORDION) */
+        <div className="bg-white rounded-[2.5rem] p-8 sm:p-10 border border-[#E5DFD5] shadow-xl text-center space-y-6">
+          <div className="w-16 h-16 bg-[#F2ECE4] text-[#C5A059] rounded-2xl flex items-center justify-center mx-auto shadow-2xs border border-[#E5DFD5]">
+            <Lock className="w-8 h-8 text-[#C5A059]" />
+          </div>
+
+          <div className="space-y-2 max-w-md mx-auto">
+            <span className="px-3.5 py-1.5 bg-[#F2ECE4] text-[#C5A059] text-[10px] font-bold uppercase tracking-[0.25em] rounded-full border border-[#E5DFD5] inline-block">
+              Convite Especial
             </span>
-            <div className="w-8 h-8 rounded-full bg-white border border-[#E5DFD5] flex items-center justify-center text-[#C5A059] shadow-2xs">
-              {isRsvpOpen ? <ChevronUp className="w-4 h-4" /> : <ChevronDown className="w-4 h-4" />}
+            <h2 className="text-3xl sm:text-4xl font-extrabold text-[#2D2D2D] tracking-tight">
+              Você foi <span className="text-[#C5A059]">Convidado(a)!</span>
+            </h2>
+            <p className="text-sm text-[#2D2D2D]/75 leading-relaxed font-medium">
+              Identifique-se para confirmar sua presença, acessar a lista exclusiva de presentes do casal e enviar um recado carinhoso aos noivos.
+            </p>
+          </div>
+
+          <div className="pt-2">
+            <button
+              onClick={() => onNavigate('login')}
+              className="w-full sm:w-auto px-10 py-4 bg-[#2D2D2D] hover:bg-black text-white font-bold text-xs uppercase tracking-[0.2em] rounded-2xl shadow-lg transition-all inline-flex items-center justify-center space-x-3 active:scale-95 cursor-pointer"
+            >
+              <Sparkles className="w-4 h-4 text-[#C5A059]" />
+              <span>Aceitar Convite / Identificar-se</span>
+              <ArrowRight className="w-4 h-4 text-[#C5A059]" />
+            </button>
+          </div>
+        </div>
+      ) : (
+        /* FORMULÁRIO DE CONFIRMAÇÃO DE PRESENÇA (SE LOGADO) */
+        <div id="confirmar-presenca" className="bg-white rounded-[2rem] shadow-lg border border-[#E5DFD5] p-6 sm:p-8 space-y-6">
+          <div className="flex items-center space-x-3 border-b border-[#E5DFD5] pb-4">
+            <div className="w-10 h-10 rounded-xl bg-[#2D2D2D] text-[#C5A059] flex items-center justify-center shrink-0 shadow-2xs">
+              <Users className="w-5 h-5" />
+            </div>
+            <div>
+              <h2 className="text-lg sm:text-xl font-bold text-[#2D2D2D]">
+                Confirmação de Presença (RSVP)
+              </h2>
+              <p className="text-xs text-[#2D2D2D]/60 font-sans">
+                Convidado: <span className="font-semibold text-[#C5A059]">{guestSession.name}</span>
+              </p>
             </div>
           </div>
-        </button>
 
-        {isRsvpOpen && (
-          <div className="p-6 sm:p-8 space-y-6 bg-white">
-            {!guestSession ? (
-              /* GUEST NOT LOGGED IN */
-              <div className="text-center space-y-4 py-2">
-                <div className="w-14 h-14 bg-[#F2ECE4] text-[#C5A059] rounded-2xl flex items-center justify-center mx-auto shadow-2xs">
-                  <Lock className="w-7 h-7" />
-                </div>
+          <div className="space-y-6">
+            {rsvpSubmitted ? (
+              <div className="bg-emerald-50 border border-emerald-200 rounded-2xl p-6 text-center space-y-4">
+                <CheckCircle2 className="w-12 h-12 text-emerald-600 mx-auto" />
                 <div className="space-y-1">
-                  <h3 className="text-2xl font-bold text-[#2D2D2D]">
-                    Você foi <span className="text-[#C5A059]">Convidado(a)!</span>
-                  </h3>
-                  <p className="text-xs text-[#2D2D2D]/70 max-w-md mx-auto leading-relaxed">
-                    Clique no botão abaixo para aceitar o convite, identificar-se e confirmar sua presença no nosso Chá de Panela.
+                  <h4 className="text-xl font-bold text-emerald-900">
+                    Presença Confirmada com Sucesso! 🎉
+                  </h4>
+                  <p className="text-xs text-emerald-800">
+                    Obrigado, {guestSession.name}! Seus dados foram salvos com carinho pelos noivos.
                   </p>
                 </div>
 
-                <button
-                  onClick={() => onNavigate('login')}
-                  className="w-full sm:w-auto px-8 py-4 bg-[#2D2D2D] hover:bg-black text-white font-bold text-xs uppercase tracking-[0.2em] rounded-2xl shadow-md transition-all inline-flex items-center justify-center space-x-2.5 active:scale-95"
-                >
-                  <Sparkles className="w-4 h-4 text-[#C5A059]" />
-                  <span>Aceitar Convite / Entrar</span>
-                </button>
+                <div className="pt-2">
+                  <button
+                    onClick={() => setRsvpSubmitted(false)}
+                    className="text-xs font-bold uppercase tracking-wider text-[#2D2D2D]/60 underline hover:text-[#2D2D2D] cursor-pointer"
+                  >
+                    Editar dados da confirmação
+                  </button>
+                </div>
               </div>
             ) : (
-              /* GUEST LOGGED IN FORM */
-              <div className="space-y-6">
-                {rsvpSubmitted ? (
-                  <div className="bg-emerald-50 border border-emerald-200 rounded-2xl p-6 text-center space-y-4">
-                    <CheckCircle2 className="w-12 h-12 text-emerald-600 mx-auto" />
-                    <div className="space-y-1">
-                      <h4 className="text-xl font-bold text-emerald-900">
-                        Presença Confirmada com Sucesso! 🎉
-                      </h4>
-                      <p className="text-xs text-emerald-800">
-                        Obrigado, {guestSession.name}! Seus dados foram salvos com carinho pelos noivos.
-                      </p>
-                    </div>
-
-                    <div className="pt-2">
-                      <button
-                        onClick={() => setRsvpSubmitted(false)}
-                        className="text-xs font-bold uppercase tracking-wider text-[#2D2D2D]/60 underline hover:text-[#2D2D2D]"
-                      >
-                        Editar dados da confirmação
-                      </button>
-                    </div>
+              <form onSubmit={handleRsvpSubmit} className="space-y-4">
+                {rsvpError && (
+                  <div className="p-3 text-xs bg-rose-50 text-rose-800 rounded-xl border border-rose-200 font-medium">
+                    {rsvpError}
                   </div>
-                ) : (
-                  <form onSubmit={handleRsvpSubmit} className="space-y-4">
-                    {rsvpError && (
-                      <div className="p-3 text-xs bg-rose-50 text-rose-800 rounded-xl border border-rose-200 font-medium">
-                        {rsvpError}
-                      </div>
-                    )}
-
-                    {/* Status Radio */}
-                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-                      <label 
-                        className={`p-4 rounded-2xl border cursor-pointer transition flex items-center space-x-3 ${
-                          rsvpStatus === 'confirmed' 
-                            ? 'border-[#C5A059] bg-[#F2ECE4] text-[#2D2D2D] font-bold shadow-xs' 
-                            : 'border-[#E5DFD5] bg-[#FAF9F6] hover:border-[#C5A059]/50'
-                        }`}
-                      >
-                        <input 
-                          type="radio" 
-                          name="rsvpStatus" 
-                          value="confirmed" 
-                          checked={rsvpStatus === 'confirmed'} 
-                          onChange={() => setRsvpStatus('confirmed')}
-                          className="w-4 h-4 text-[#C5A059] focus:ring-[#C5A059]"
-                        />
-                        <span className="text-xs">Sim, com certeza estarei lá! 🎉</span>
-                      </label>
-
-                      <label 
-                        className={`p-4 rounded-2xl border cursor-pointer transition flex items-center space-x-3 ${
-                          rsvpStatus === 'declined' 
-                            ? 'border-[#2D2D2D]/40 bg-white text-[#2D2D2D] font-bold shadow-xs' 
-                            : 'border-[#E5DFD5] bg-[#FAF9F6] hover:border-[#2D2D2D]/30'
-                        }`}
-                      >
-                        <input 
-                          type="radio" 
-                          name="rsvpStatus" 
-                          value="declined" 
-                          checked={rsvpStatus === 'declined'} 
-                          onChange={() => setRsvpStatus('declined')}
-                          className="w-4 h-4 text-[#2D2D2D] focus:ring-[#2D2D2D]"
-                        />
-                        <span className="text-xs">Infelizmente não poderei ir 💔</span>
-                      </label>
-                    </div>
-
-                    {/* Inputs */}
-                    <div>
-                      <label className="block text-[10px] font-bold text-[#2D2D2D]/70 uppercase tracking-[0.2em] mb-1">
-                        Seu Nome Completo <span className="text-[#C5A059]">*</span>
-                      </label>
-                      <input 
-                        type="text"
-                        required
-                        placeholder="Ex: Beatriz Silva"
-                        value={rsvpName}
-                        onChange={e => setRsvpName(e.target.value)}
-                        className="w-full px-4 py-3 text-xs border border-[#E5DFD5] bg-[#FAF9F6] rounded-xl focus:border-[#C5A059] outline-none transition"
-                      />
-                    </div>
-
-                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-                      <div>
-                        <label className="block text-[10px] font-bold text-[#2D2D2D]/70 uppercase tracking-[0.2em] mb-1">
-                          WhatsApp / Telefone
-                        </label>
-                        <input 
-                          type="tel"
-                          placeholder="(11) 99999-9999"
-                          value={rsvpPhone}
-                          onChange={e => setRsvpPhone(e.target.value)}
-                          className="w-full px-4 py-3 text-xs border border-[#E5DFD5] bg-[#FAF9F6] rounded-xl focus:border-[#C5A059] outline-none transition"
-                        />
-                      </div>
-
-                      <div>
-                        <label className="block text-[10px] font-bold text-[#2D2D2D]/70 uppercase tracking-[0.2em] mb-1">
-                          Acompanhantes
-                        </label>
-                        <select
-                          value={rsvpCompanions}
-                          onChange={e => setRsvpCompanions(Number(e.target.value))}
-                          className="w-full px-4 py-3 text-xs border border-[#E5DFD5] rounded-xl focus:border-[#C5A059] outline-none transition bg-[#FAF9F6] text-[#2D2D2D]"
-                        >
-                          <option value={0}>Apenas eu</option>
-                          <option value={1}>+ 1 acompanhante</option>
-                          <option value={2}>+ 2 acompanhantes</option>
-                          <option value={3}>+ 3 acompanhantes</option>
-                        </select>
-                      </div>
-                    </div>
-
-                    <div>
-                      <label className="block text-[10px] font-bold text-[#2D2D2D]/70 uppercase tracking-[0.2em] mb-1">
-                        Recado para os Noivos (Opcional)
-                      </label>
-                      <textarea 
-                        rows={2}
-                        placeholder="Deixe uma mensagem carinhosa..."
-                        value={rsvpMessage}
-                        onChange={e => setRsvpMessage(e.target.value)}
-                        className="w-full px-4 py-3 text-xs border border-[#E5DFD5] bg-[#FAF9F6] rounded-xl focus:border-[#C5A059] outline-none transition resize-none"
-                      />
-                    </div>
-
-                    <button
-                      type="submit"
-                      disabled={rsvpLoading}
-                      className="w-full py-4 bg-[#2D2D2D] hover:bg-black active:scale-98 text-white font-bold text-xs uppercase tracking-[0.2em] rounded-xl shadow-md transition-all flex items-center justify-center space-x-2 disabled:opacity-50"
-                    >
-                      <Send className="w-4 h-4 text-[#C5A059]" />
-                      <span>{rsvpLoading ? 'Salvando...' : 'Confirmar Presença Agora'}</span>
-                    </button>
-                  </form>
                 )}
-              </div>
+
+                {/* Status Radio */}
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                  <label 
+                    className={`p-4 rounded-2xl border cursor-pointer transition flex items-center space-x-3 ${
+                      rsvpStatus === 'confirmed' 
+                        ? 'border-[#C5A059] bg-[#F2ECE4] text-[#2D2D2D] font-bold shadow-xs' 
+                        : 'border-[#E5DFD5] bg-[#FAF9F6] hover:border-[#C5A059]/50'
+                    }`}
+                  >
+                    <input 
+                      type="radio" 
+                      name="rsvpStatus" 
+                      value="confirmed" 
+                      checked={rsvpStatus === 'confirmed'} 
+                      onChange={() => setRsvpStatus('confirmed')}
+                      className="w-4 h-4 text-[#C5A059] focus:ring-[#C5A059]"
+                    />
+                    <span className="text-xs">Sim, com certeza estarei lá! 🎉</span>
+                  </label>
+
+                  <label 
+                    className={`p-4 rounded-2xl border cursor-pointer transition flex items-center space-x-3 ${
+                      rsvpStatus === 'declined' 
+                        ? 'border-[#2D2D2D]/40 bg-white text-[#2D2D2D] font-bold shadow-xs' 
+                        : 'border-[#E5DFD5] bg-[#FAF9F6] hover:border-[#2D2D2D]/30'
+                    }`}
+                  >
+                    <input 
+                      type="radio" 
+                      name="rsvpStatus" 
+                      value="declined" 
+                      checked={rsvpStatus === 'declined'} 
+                      onChange={() => setRsvpStatus('declined')}
+                      className="w-4 h-4 text-[#2D2D2D] focus:ring-[#2D2D2D]"
+                    />
+                    <span className="text-xs">Infelizmente não poderei ir 💔</span>
+                  </label>
+                </div>
+
+                {/* Inputs */}
+                <div>
+                  <label className="block text-[10px] font-bold text-[#2D2D2D]/70 uppercase tracking-[0.2em] mb-1">
+                    Seu Nome Completo <span className="text-[#C5A059]">*</span>
+                  </label>
+                  <input 
+                    type="text"
+                    required
+                    placeholder="Ex: Beatriz Silva"
+                    value={rsvpName}
+                    onChange={e => setRsvpName(e.target.value)}
+                    className="w-full px-4 py-3 text-base sm:text-xs border border-[#E5DFD5] bg-[#FAF9F6] rounded-xl focus:border-[#C5A059] outline-none transition"
+                  />
+                </div>
+
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                  <div>
+                    <label className="block text-[10px] font-bold text-[#2D2D2D]/70 uppercase tracking-[0.2em] mb-1">
+                      WhatsApp / Telefone
+                    </label>
+                    <input 
+                      type="tel"
+                      placeholder="(11) 99999-9999"
+                      value={rsvpPhone}
+                      onChange={e => setRsvpPhone(e.target.value)}
+                      className="w-full px-4 py-3 text-base sm:text-xs border border-[#E5DFD5] bg-[#FAF9F6] rounded-xl focus:border-[#C5A059] outline-none transition"
+                    />
+                  </div>
+
+                  <div>
+                    <label className="block text-[10px] font-bold text-[#2D2D2D]/70 uppercase tracking-[0.2em] mb-1">
+                      Acompanhantes
+                    </label>
+                    <select
+                      value={rsvpCompanions}
+                      onChange={e => setRsvpCompanions(Number(e.target.value))}
+                      className="w-full px-4 py-3 text-base sm:text-xs border border-[#E5DFD5] rounded-xl focus:border-[#C5A059] outline-none transition bg-[#FAF9F6] text-[#2D2D2D]"
+                    >
+                      <option value={0}>Apenas eu</option>
+                      <option value={1}>+ 1 acompanhante</option>
+                      <option value={2}>+ 2 acompanhantes</option>
+                      <option value={3}>+ 3 acompanhantes</option>
+                    </select>
+                  </div>
+                </div>
+
+                <div>
+                  <label className="block text-[10px] font-bold text-[#2D2D2D]/70 uppercase tracking-[0.2em] mb-1">
+                    Recado para os Noivos (Opcional)
+                  </label>
+                  <textarea 
+                    rows={2}
+                    placeholder="Deixe uma mensagem carinhosa..."
+                    value={rsvpMessage}
+                    onChange={e => setRsvpMessage(e.target.value)}
+                    className="w-full px-4 py-3 text-base sm:text-xs border border-[#E5DFD5] bg-[#FAF9F6] rounded-xl focus:border-[#C5A059] outline-none transition resize-none"
+                  />
+                </div>
+
+                <button
+                  type="submit"
+                  disabled={rsvpLoading}
+                  className="w-full py-4 bg-[#2D2D2D] hover:bg-black active:scale-98 text-white font-bold text-xs uppercase tracking-[0.2em] rounded-xl shadow-md transition-all flex items-center justify-center space-x-2 disabled:opacity-50 cursor-pointer"
+                >
+                  <Send className="w-4 h-4 text-[#C5A059]" />
+                  <span>{rsvpLoading ? 'Salvando...' : 'Confirmar Presença Agora'}</span>
+                </button>
+              </form>
             )}
           </div>
-        )}
-      </div>
+        </div>
+      )}
 
-      {/* 4. ACCORDION: CHAVE PIX */}
-      {eventInfo.pixKey && (
+      {/* 4. ACCORDION: CHAVE PIX (APENAS PARA USUÁRIOS LOGADOS) */}
+      {guestSession && eventInfo.pixKey && (
         <div className="bg-white rounded-2xl shadow-xs border border-[#E5DFD5] overflow-hidden transition-all">
           <button
             type="button"
@@ -454,7 +445,7 @@ export const HomePage: React.FC<HomePageProps> = ({
                   </div>
                   <button
                     onClick={handleCopyPix}
-                    className="w-full sm:w-auto px-4 py-2.5 bg-[#C5A059] hover:bg-[#B38F48] text-white text-[10px] uppercase tracking-widest font-bold rounded-xl transition flex items-center justify-center space-x-1.5 shadow-2xs"
+                    className="w-full sm:w-auto px-4 py-2.5 bg-[#C5A059] hover:bg-[#B38F48] text-white text-[10px] uppercase tracking-widest font-bold rounded-xl transition flex items-center justify-center space-x-1.5 shadow-2xs cursor-pointer"
                   >
                     {copiedPix ? <Check className="w-3.5 h-3.5" /> : <Copy className="w-3.5 h-3.5" />}
                     <span>{copiedPix ? 'Copiado!' : 'Copiar PIX'}</span>
@@ -530,57 +521,74 @@ export const HomePage: React.FC<HomePageProps> = ({
         )}
       </div>
 
-      {/* 6. INFORMAÇÕES DO EVENTO (NO FINAL DA PÁGINA) */}
-      <div className="bg-white rounded-[2rem] shadow-lg border border-[#E5DFD5] p-6 sm:p-8 space-y-5">
-        <div className="flex items-center space-x-2 border-b border-[#E5DFD5] pb-3">
-          <Sparkles className="w-5 h-5 text-[#C5A059]" />
-          <h2 className="text-xl sm:text-2xl font-bold text-[#2D2D2D]">
+      {/* 6. INFORMAÇÕES DO EVENTO (SEM O CONTAINER PRINCIPAL, COM CARDS INTERNOS EXPANDIDOS) */}
+      <div className="space-y-4 pt-4">
+        <div className="flex items-center space-x-3 pb-2 border-b border-[#E5DFD5]">
+          <Sparkles className="w-6 h-6 text-[#C5A059]" />
+          <h2 className="text-2xl sm:text-3xl font-extrabold text-[#2D2D2D] tracking-tight">
             Informações do Evento
           </h2>
         </div>
 
-        <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+        <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
           {/* Date & Time Card */}
-          <div className="bg-[#FAF9F6] p-5 rounded-2xl border border-[#E5DFD5] space-y-2.5">
-            <div className="flex items-center space-x-2 text-[#C5A059]">
-              <Calendar className="w-5 h-5" />
-              <span className="text-[10px] uppercase tracking-widest font-bold text-[#2D2D2D]/60">Data e Horário</span>
+          <div className="bg-white p-6 sm:p-8 rounded-[2rem] border-2 border-[#E5DFD5] shadow-md space-y-4 hover:border-[#C5A059] transition-all">
+            <div className="flex items-center space-x-3 text-[#C5A059]">
+              <div className="w-12 h-12 rounded-2xl bg-[#F2ECE4] flex items-center justify-center shrink-0 border border-[#E5DFD5]">
+                <Calendar className="w-6 h-6" />
+              </div>
+              <div>
+                <span className="text-[10px] uppercase tracking-widest font-bold text-[#2D2D2D]/60 block">Data e Horário</span>
+                <span className="text-sm font-bold text-[#2D2D2D]">Quando o evento acontece</span>
+              </div>
             </div>
-            <p className="text-base font-bold text-[#2D2D2D] capitalize">
-              {formatDateString(eventInfo.date) || 'A definir'}
-            </p>
-            <p className="text-xs text-[#2D2D2D]/70 flex items-center space-x-1.5 font-sans">
-              <Clock className="w-4 h-4 text-[#C5A059]" />
-              <span>A partir das {eventInfo.time || '15:30'}h</span>
-            </p>
+
+            <div className="space-y-1.5 pt-1">
+              <p className="text-xl sm:text-2xl font-extrabold text-[#2D2D2D] capitalize leading-snug">
+                {formatDateString(eventInfo.date) || 'A definir'}
+              </p>
+              <p className="text-sm text-[#2D2D2D]/80 flex items-center space-x-2 font-medium">
+                <Clock className="w-4 h-4 text-[#C5A059]" />
+                <span>A partir das <strong>{eventInfo.time || '15:30'}h</strong></span>
+              </p>
+            </div>
           </div>
 
           {/* Location Card */}
-          <div className="bg-[#FAF9F6] p-5 rounded-2xl border border-[#E5DFD5] space-y-2.5">
-            <div className="flex items-center space-x-2 text-[#C5A059]">
-              <MapPin className="w-5 h-5" />
-              <span className="text-[10px] uppercase tracking-widest font-bold text-[#2D2D2D]/60">Localização</span>
+          <div className="bg-white p-6 sm:p-8 rounded-[2rem] border-2 border-[#E5DFD5] shadow-md space-y-4 hover:border-[#C5A059] transition-all flex flex-col justify-between">
+            <div className="space-y-3">
+              <div className="flex items-center space-x-3 text-[#C5A059]">
+                <div className="w-12 h-12 rounded-2xl bg-[#F2ECE4] flex items-center justify-center shrink-0 border border-[#E5DFD5]">
+                  <MapPin className="w-6 h-6" />
+                </div>
+                <div>
+                  <span className="text-[10px] uppercase tracking-widest font-bold text-[#2D2D2D]/60 block">Localização</span>
+                  <span className="text-sm font-bold text-[#2D2D2D]">Endereço da comemoração</span>
+                </div>
+              </div>
+
+              <p className="text-base sm:text-lg font-bold text-[#2D2D2D] leading-snug">
+                {eventInfo.location || 'Espaço a confirmar'}
+              </p>
             </div>
-            <p className="text-xs sm:text-sm font-semibold text-[#2D2D2D] leading-snug">
-              {eventInfo.location || 'Espaço a confirmar'}
-            </p>
-            <div className="flex flex-col sm:flex-row gap-2 pt-1">
+
+            <div className="flex flex-col sm:flex-row gap-3 pt-2">
               {eventInfo.googleMapsUrl && (
                 <a
                   href={eventInfo.googleMapsUrl}
                   target="_blank"
                   rel="noreferrer"
-                  className="w-full sm:w-auto px-3.5 py-2.5 bg-[#2D2D2D] hover:bg-black text-white text-[10px] uppercase tracking-widest font-bold rounded-xl transition flex items-center justify-center space-x-1.5 shadow-2xs"
+                  className="w-full sm:flex-1 px-4 py-3 bg-[#2D2D2D] hover:bg-black text-white text-xs uppercase tracking-widest font-bold rounded-xl transition flex items-center justify-center space-x-2 shadow-xs cursor-pointer active:scale-95"
                 >
-                  <ExternalLink className="w-3.5 h-3.5 text-[#C5A059]" />
+                  <ExternalLink className="w-4 h-4 text-[#C5A059]" />
                   <span>Abrir no Google Maps</span>
                 </a>
               )}
               <button
                 onClick={handleCopyAddress}
-                className="w-full sm:w-auto px-3.5 py-2.5 bg-white border border-[#E5DFD5] text-[#2D2D2D] text-[10px] uppercase tracking-widest font-bold rounded-xl hover:bg-[#F2ECE4] transition flex items-center justify-center space-x-1.5"
+                className="w-full sm:flex-1 px-4 py-3 bg-[#FAF9F6] border-2 border-[#E5DFD5] text-[#2D2D2D] text-xs uppercase tracking-widest font-bold rounded-xl hover:bg-[#F2ECE4] hover:border-[#C5A059] transition flex items-center justify-center space-x-2 cursor-pointer active:scale-95"
               >
-                {copiedAddress ? <Check className="w-3.5 h-3.5 text-emerald-600" /> : <Copy className="w-3.5 h-3.5" />}
+                {copiedAddress ? <Check className="w-4 h-4 text-emerald-600" /> : <Copy className="w-4 h-4" />}
                 <span>{copiedAddress ? 'Endereço Copiado' : 'Copiar Endereço'}</span>
               </button>
             </div>

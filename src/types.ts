@@ -1,4 +1,4 @@
-export type AppRoute = 'home' | 'presentes' | 'login' | 'noiva';
+export type AppRoute = 'home' | 'casal' | 'presentes' | 'login' | 'noiva';
 
 export interface GuestAuthSession {
   name: string;
@@ -51,6 +51,7 @@ export interface Gift {
   description?: string;
   priceRange?: string;
   suggestedUrl?: string;
+  imageUrl?: string;
   isClaimed: boolean;
   claimedByGuestName?: string;
   claimedByGuestEmail?: string;

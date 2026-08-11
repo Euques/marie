@@ -130,16 +130,6 @@ export const GiftsPage: React.FC<GiftsPageProps> = ({
             <Unlock className="w-4 h-4 text-[#C5A059]" />
             <span>Aceitar Convite / Entrar</span>
           </button>
-
-          <div className="pt-2">
-            <button
-              onClick={() => onNavigate('home')}
-              className="w-full py-3 bg-[#FAF9F6] hover:bg-[#F2ECE4] text-[#2D2D2D] border border-[#E5DFD5] font-bold text-xs rounded-xl transition flex items-center justify-center space-x-2 active:scale-95 cursor-pointer"
-            >
-              <ArrowLeft className="w-4 h-4 text-[#C5A059]" />
-              <span>Voltar</span>
-            </button>
-          </div>
         </div>
       </div>
     );
@@ -166,18 +156,11 @@ export const GiftsPage: React.FC<GiftsPageProps> = ({
 
         <div className="flex items-center space-x-1.5 shrink-0">
           <button
-            onClick={() => onNavigate('home')}
-            className="px-3.5 py-2 bg-[#FAF9F6] hover:bg-[#F2ECE4] text-[#2D2D2D] border border-[#E5DFD5] font-bold text-xs rounded-xl transition flex items-center space-x-1.5 active:scale-95 cursor-pointer shadow-2xs"
-          >
-            <ArrowLeft className="w-4 h-4 text-[#C5A059]" />
-            <span>Voltar</span>
-          </button>
-          <button
             onClick={() => setIsCustomGiftModalOpen(true)}
-            className="px-3 py-2 bg-[#2D2D2D] hover:bg-black text-white font-bold text-[11px] rounded-xl transition flex items-center space-x-1 shadow-2xs active:scale-95"
+            className="px-3.5 py-2 bg-[#2D2D2D] hover:bg-black text-white font-bold text-[11px] uppercase tracking-wider rounded-xl transition flex items-center space-x-1.5 shadow-2xs active:scale-95 cursor-pointer"
           >
             <Sparkles className="w-3.5 h-3.5 text-[#C5A059]" />
-            <span className="hidden sm:inline">Sugerir</span>
+            <span>Sugerir Presente</span>
           </button>
         </div>
       </div>

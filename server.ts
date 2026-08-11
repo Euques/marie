@@ -64,6 +64,37 @@ async function startServer() {
     res.json(db.eventInfo);
   });
 
+  // Register New Couple (Clears previous guests and gifts so new account starts completely fresh with 0 items)
+  app.post('/api/register-couple', (req, res) => {
+    const updatedInfo = req.body as Partial<EventInfo>;
+    db.eventInfo = { ...db.eventInfo, ...updatedInfo };
+    db.guests = []; // Empty guest list for new couple
+    db.gifts = [];  // Empty gift list so new couple starts with 0 gifts
+    saveData(db);
+    res.json({ success: true, eventInfo: db.eventInfo });
+  });
+
+  // Clear Guests only
+  app.post('/api/clear-guests', (req, res) => {
+    db.guests = [];
+    saveData(db);
+    res.json({ success: true, message: 'Lista de convidados zerada com sucesso.' });
+  });
+
+  // Clear Gifts only (Zerar lista de presentes)
+  app.post('/api/clear-gifts', (req, res) => {
+    db.gifts = [];
+    saveData(db);
+    res.json({ success: true, message: 'Lista de presentes zerada com sucesso.' });
+  });
+
+  // Import Template Gifts (Carregar 20 sugestões padrão)
+  app.post('/api/import-template-gifts', (req, res) => {
+    db.gifts = JSON.parse(JSON.stringify(initialData.gifts));
+    saveData(db);
+    res.json({ success: true, gifts: db.gifts, message: '20 sugestões de presentes carregadas com sucesso.' });
+  });
+
   // Guests Endpoints
   app.get('/api/guests', (req, res) => {
     res.json(db.guests);

@@ -23,6 +23,9 @@ interface AdminPanelProps {
   onDeleteGift: (id: string) => Promise<void>;
   onUnclaimGift: (id: string) => Promise<void>;
   onResetData: () => Promise<void>;
+  onClearGuests?: () => Promise<void>;
+  onClearGifts?: () => Promise<void>;
+  onImportTemplateGifts?: () => Promise<void>;
 }
 
 const CATEGORIES: GiftCategory[] = [
@@ -44,7 +47,10 @@ export const AdminPanel: React.FC<AdminPanelProps> = ({
   onSaveGift,
   onDeleteGift,
   onUnclaimGift,
-  onResetData
+  onResetData,
+  onClearGuests,
+  onClearGifts,
+  onImportTemplateGifts
 }) => {
   // Password auth
   const [isAuthenticated, setIsAuthenticated] = useState(false);
@@ -113,11 +119,11 @@ export const AdminPanel: React.FC<AdminPanelProps> = ({
   const handleAdminFirebaseAuthSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!adminEmail.trim()) {
-      setAuthError('Por favor, informe o e-mail do admin/noiva.');
+      setAuthError('Por favor, informe o e-mail de acesso do casal.');
       return;
     }
     if (!adminPassword.trim() || adminPassword.length < 6) {
-      setAuthError('A senha do Firebase deve ter no mínimo 6 caracteres.');
+      setAuthError('A senha deve conter no mínimo 6 caracteres.');
       return;
     }
 
@@ -129,8 +135,8 @@ export const AdminPanel: React.FC<AdminPanelProps> = ({
       setIsAuthenticated(true);
       setAuthError('');
     } catch (err: any) {
-      console.error('Admin Firebase Auth Error:', err);
-      setAuthError(err.message || 'Erro ao autenticar no Firebase.');
+      console.error('Admin Auth Error:', err);
+      setAuthError(err.message || 'Erro ao realizar login. Verifique seus dados.');
     } finally {
       setAdminLoadingAuth(false);
     }
@@ -147,8 +153,12 @@ export const AdminPanel: React.FC<AdminPanelProps> = ({
       console.error('Google Admin Auth Error:', err);
       if (err.code === 'auth/popup-closed-by-user') {
         setAuthError('Login com Google cancelado.');
+      } else if (err.code === 'auth/unauthorized-domain') {
+        setAuthError('Autenticação rápida indisponível neste domínio. Utilize o formulário de E-mail e Senha abaixo ou a Senha Padrão (1234):');
+        setUseLocalPasscode(true);
       } else {
-        setAuthError('Erro na autenticação do Google. Tente novamente ou use e-mail/senha.');
+        setAuthError('Erro na autenticação do Google. Tente com E-mail e Senha abaixo ou com a Senha Padrão (1234):');
+        setUseLocalPasscode(true);
       }
     } finally {
       setAdminLoadingAuth(false);
@@ -228,88 +238,101 @@ export const AdminPanel: React.FC<AdminPanelProps> = ({
     setTimeout(() => setCopiedInvite(false), 3000);
   };
 
-  // Lock Password Screen with Firebase Auth & Firestore
+  // Lock Password Screen with clean, airy layout
   if (!isAuthenticated) {
     return (
-      <div className="min-h-[70vh] flex items-center justify-center p-4">
-        <div className="bg-white rounded-3xl shadow-xl max-w-md w-full p-8 border border-[#E5DFD5] space-y-6 text-center">
-          <div className="w-16 h-16 bg-[#F2ECE4] text-[#C5A059] rounded-2xl flex items-center justify-center mx-auto shadow-2xs">
-            <Crown className="w-8 h-8 text-[#C5A059]" />
-          </div>
+      <div className="min-h-[70vh] flex items-center justify-center py-8 px-4 animate-fade-in">
+        <div className="max-w-md w-full mx-auto space-y-6 text-center">
+          
+          {/* Header */}
+          <div className="space-y-3">
+            <div className="w-16 h-16 bg-[#F2ECE4] text-[#C5A059] rounded-2xl flex items-center justify-center mx-auto shadow-sm border border-[#E5DFD5]">
+              <Crown className="w-8 h-8 text-[#C5A059]" />
+            </div>
 
-          <div className="space-y-1">
-            <h2 className="text-2xl font-bold text-[#2D2D2D]">Painel da Noiva & Noivo</h2>
-            <p className="text-xs text-[#2D2D2D]/60 font-sans">
-              Autenticação de administradores via Firebase Auth & Firestore
-            </p>
+            <div className="space-y-1">
+              <h2 className="text-3xl font-extrabold text-[#2D2D2D] tracking-tight">
+                Painel do <span className="text-[#C5A059]">Casal</span>
+              </h2>
+              <p className="text-xs sm:text-sm text-[#2D2D2D]/70 font-medium max-w-xs mx-auto">
+                Área restrita de gerenciamento para os noivos
+              </p>
+            </div>
           </div>
 
           {authError && (
-            <div className="p-3 text-xs bg-rose-50 text-rose-800 rounded-xl border border-rose-200 text-left font-medium">
+            <div className="p-4 text-xs bg-rose-50 text-rose-800 rounded-2xl border border-rose-200 text-left font-semibold">
               {authError}
             </div>
           )}
 
-          {/* GOOGLE AUTH BUTTON FOR BRIDE */}
-          <button
-            type="button"
-            disabled={adminLoadingAuth}
-            onClick={handleAdminGoogleAuth}
-            className="w-full py-3 px-4 bg-white hover:bg-gray-50 active:scale-98 text-[#2D2D2D] font-bold text-xs rounded-2xl border-2 border-[#E5DFD5] hover:border-[#C5A059] transition flex items-center justify-center space-x-3 shadow-xs disabled:opacity-50 cursor-pointer"
-          >
-            {adminLoadingAuth ? (
-              <Loader2 className="w-5 h-5 text-[#C5A059] animate-spin" />
-            ) : (
-              <svg className="w-5 h-5 shrink-0" viewBox="0 0 24 24">
-                <path fill="#4285F4" d="M23.745 12.27c0-.7-.06-1.4-.19-2.07H12v4.51h6.6c-.29 1.52-1.14 2.82-2.4 3.68v3.05h3.88c2.27-2.09 3.665-5.17 3.665-9.17z"/>
-                <path fill="#34A853" d="M12 24c3.24 0 5.95-1.08 7.93-2.91l-3.88-3.05c-1.08.72-2.45 1.16-4.05 1.16-3.12 0-5.77-2.11-6.72-4.96H1.28v3.15C3.25 21.3 7.31 24 12 24z"/>
-                <path fill="#FBBC05" d="M5.28 14.24c-.25-.72-.38-1.49-.38-2.24s.13-1.52.38-2.24V6.61H1.28C.46 8.23 0 10.06 0 12s.46 3.77 1.28 5.39l4-3.15z"/>
-                <path fill="#EA4335" d="M12 4.75c1.77 0 3.35.61 4.6 1.8l3.42-3.42C17.95 1.19 15.24 0 12 0 7.31 0 3.25 2.7 1.28 6.61l4 3.15c.95-2.85 3.6-4.96 6.72-4.96z"/>
-              </svg>
-            )}
-            <span>Entrar com o Google (Firebase)</span>
-          </button>
+          {/* PROMINENT HIGHLIGHTED GOOGLE AUTH BUTTON */}
+          <div className="space-y-3">
+            <button
+              type="button"
+              disabled={adminLoadingAuth}
+              onClick={handleAdminGoogleAuth}
+              className="w-full py-4 px-5 bg-white hover:bg-[#FAF9F6] active:scale-95 text-[#2D2D2D] font-extrabold text-sm rounded-2xl border-2 border-[#C5A059] shadow-md hover:shadow-lg transition-all flex items-center justify-center space-x-3 disabled:opacity-50 cursor-pointer group"
+            >
+              {adminLoadingAuth ? (
+                <Loader2 className="w-6 h-6 text-[#C5A059] animate-spin" />
+              ) : (
+                <div className="w-7 h-7 rounded-full bg-white p-1 border border-[#E5DFD5] flex items-center justify-center shrink-0 shadow-2xs group-hover:scale-105 transition-transform">
+                  <svg className="w-full h-full" viewBox="0 0 24 24">
+                    <path fill="#4285F4" d="M23.745 12.27c0-.7-.06-1.4-.19-2.07H12v4.51h6.6c-.29 1.52-1.14 2.82-2.4 3.68v3.05h3.88c2.27-2.09 3.665-5.17 3.665-9.17z"/>
+                    <path fill="#34A853" d="M12 24c3.24 0 5.95-1.08 7.93-2.91l-3.88-3.05c-1.08.72-2.45 1.16-4.05 1.16-3.12 0-5.77-2.11-6.72-4.96H1.28v3.15C3.25 21.3 7.31 24 12 24z"/>
+                    <path fill="#FBBC05" d="M5.28 14.24c-.25-.72-.38-1.49-.38-2.24s.13-1.52.38-2.24V6.61H1.28C.46 8.23 0 10.06 0 12s.46 3.77 1.28 5.39l4-3.15z"/>
+                    <path fill="#EA4335" d="M12 4.75c1.77 0 3.35.61 4.6 1.8l3.42-3.42C17.95 1.19 15.24 0 12 0 7.31 0 3.25 2.7 1.28 6.61l4 3.15c.95-2.85 3.6-4.96 6.72-4.96z"/>
+                  </svg>
+                </div>
+              )}
+              <span className="tracking-wide">Entrar com o Google</span>
+            </button>
+            <p className="text-[11px] text-[#2D2D2D]/60 font-medium">
+              Acesso rápido e automático com sua conta Google
+            </p>
+          </div>
 
-          <div className="relative my-4">
+          <div className="relative my-2">
             <div className="absolute inset-0 flex items-center">
               <div className="w-full border-t border-[#E5DFD5]"></div>
             </div>
-            <span className="relative bg-white px-3 text-[10px] font-bold text-[#2D2D2D]/50 uppercase tracking-widest">
-              ou e-mail e senha no Firebase
+            <span className="relative bg-[#FAF9F6] px-3 text-[10px] font-bold text-[#2D2D2D]/50 uppercase tracking-widest">
+              ou com e-mail e senha
             </span>
           </div>
 
           {/* MODE SWITCH: LOGAR VS CADASTRAR */}
-          <div className="flex bg-[#FAF9F6] p-1 rounded-2xl border border-[#E5DFD5]">
+          <div className="flex bg-[#F2ECE4]/60 p-1.5 rounded-2xl border border-[#E5DFD5]">
             <button
               type="button"
               onClick={() => { setAdminAuthMode('login'); setAuthError(''); }}
-              className={`flex-1 py-2 text-xs font-bold rounded-xl transition ${
+              className={`flex-1 py-2.5 text-xs font-bold rounded-xl transition cursor-pointer ${
                 adminAuthMode === 'login' 
-                  ? 'bg-white text-[#2D2D2D] shadow-2xs border border-[#E5DFD5]' 
+                  ? 'bg-white text-[#2D2D2D] shadow-xs border border-[#E5DFD5]' 
                   : 'text-[#2D2D2D]/60 hover:text-[#2D2D2D]'
               }`}
             >
-              Logar Noiva
+              Entrar
             </button>
             <button
               type="button"
               onClick={() => { setAdminAuthMode('register'); setAuthError(''); }}
-              className={`flex-1 py-2 text-xs font-bold rounded-xl transition ${
+              className={`flex-1 py-2.5 text-xs font-bold rounded-xl transition cursor-pointer ${
                 adminAuthMode === 'register' 
-                  ? 'bg-white text-[#2D2D2D] shadow-2xs border border-[#E5DFD5]' 
+                  ? 'bg-white text-[#2D2D2D] shadow-xs border border-[#E5DFD5]' 
                   : 'text-[#2D2D2D]/60 hover:text-[#2D2D2D]'
               }`}
             >
-              Cadastrar Noiva
+              Criar Conta
             </button>
           </div>
 
-          {/* FIREBASE EMAIL/PASSWORD FORM */}
+          {/* EMAIL/PASSWORD FORM */}
           <form onSubmit={handleAdminFirebaseAuthSubmit} className="space-y-4 text-left">
             <div>
-              <label className="block text-[10px] font-bold text-[#2D2D2D]/70 uppercase tracking-[0.15em] mb-1">
-                E-mail da Noiva / Admin <span className="text-[#C5A059]">*</span>
+              <label className="block text-[10px] font-bold text-[#2D2D2D]/70 uppercase tracking-[0.15em] mb-1.5">
+                E-mail de Acesso <span className="text-[#C5A059]">*</span>
               </label>
               <div className="relative">
                 <Mail className="w-4 h-4 text-[#2D2D2D]/40 absolute left-3.5 top-3.5" />
@@ -319,14 +342,14 @@ export const AdminPanel: React.FC<AdminPanelProps> = ({
                   placeholder="noiva@email.com"
                   value={adminEmail}
                   onChange={e => setAdminEmail(e.target.value)}
-                  className="w-full pl-10 pr-4 py-2.5 text-xs border border-[#E5DFD5] bg-[#FAF9F6] rounded-xl focus:border-[#C5A059] outline-none transition font-sans"
+                  className="w-full pl-10 pr-4 py-3 text-base sm:text-xs border border-[#E5DFD5] bg-white rounded-xl focus:border-[#C5A059] outline-none transition font-sans"
                 />
               </div>
             </div>
 
             <div>
-              <label className="block text-[10px] font-bold text-[#2D2D2D]/70 uppercase tracking-[0.15em] mb-1">
-                {adminAuthMode === 'register' ? 'Crie sua Senha Firebase' : 'Senha do Firebase'} <span className="text-[#C5A059]">*</span>
+              <label className="block text-[10px] font-bold text-[#2D2D2D]/70 uppercase tracking-[0.15em] mb-1.5">
+                Senha de Acesso <span className="text-[#C5A059]">*</span>
               </label>
               <div className="relative">
                 <Lock className="w-4 h-4 text-[#2D2D2D]/40 absolute left-3.5 top-3.5" />
@@ -334,82 +357,66 @@ export const AdminPanel: React.FC<AdminPanelProps> = ({
                   type={showAdminPassword ? 'text' : 'password'}
                   required
                   minLength={6}
-                  placeholder="••••••••"
+                  placeholder="Mínimo 6 caracteres"
                   value={adminPassword}
                   onChange={e => setAdminPassword(e.target.value)}
-                  className="w-full pl-10 pr-10 py-2.5 text-xs border border-[#E5DFD5] bg-[#FAF9F6] rounded-xl focus:border-[#C5A059] outline-none transition font-sans"
+                  className="w-full pl-10 pr-10 py-3 text-base sm:text-xs border border-[#E5DFD5] bg-white rounded-xl focus:border-[#C5A059] outline-none transition font-sans"
                 />
                 <button
                   type="button"
                   onClick={() => setShowAdminPassword(!showAdminPassword)}
-                  className="absolute right-3 top-3 text-[#2D2D2D]/40 hover:text-[#2D2D2D]"
+                  className="absolute right-3 top-3.5 text-[#2D2D2D]/40 hover:text-[#2D2D2D]"
                 >
                   {showAdminPassword ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
                 </button>
               </div>
-              <p className="text-[10px] text-[#2D2D2D]/50 mt-1">Mínimo de 6 caracteres para autenticação no Firebase.</p>
             </div>
 
             <button
               type="submit"
               disabled={adminLoadingAuth}
-              className="w-full py-3 bg-[#2D2D2D] hover:bg-black text-white font-bold text-[10px] uppercase tracking-[0.2em] rounded-xl shadow-xs transition active:scale-98 flex items-center justify-center space-x-2 disabled:opacity-50 cursor-pointer"
+              className="w-full py-4 bg-[#2D2D2D] hover:bg-black text-white font-bold text-xs uppercase tracking-[0.2em] rounded-2xl shadow-md transition active:scale-98 flex items-center justify-center space-x-2 disabled:opacity-50 cursor-pointer"
             >
               {adminLoadingAuth ? (
-                <Loader2 className="w-4 h-4 text-[#C5A059] animate-spin" />
+                <Loader2 className="w-5 h-5 text-[#C5A059] animate-spin" />
               ) : (
-                <ShieldCheck className="w-4 h-4 text-[#C5A059]" />
+                <ShieldCheck className="w-5 h-5 text-[#C5A059]" />
               )}
-              <span>{adminLoadingAuth ? 'Processando...' : adminAuthMode === 'register' ? 'Cadastrar e Acessar Painel' : 'Logar no Firebase'}</span>
+              <span>{adminLoadingAuth ? 'Acessando...' : adminAuthMode === 'register' ? 'Cadastrar e Acessar Painel' : 'Acessar Painel do Casal'}</span>
             </button>
           </form>
 
           {/* ACCORDION / TOGGLE FOR LOCAL PASSCODE FALLBACK */}
-          <div className="pt-3 border-t border-[#E5DFD5] text-left">
+          <div className="pt-4 border-t border-[#E5DFD5] text-left">
             <button
               type="button"
               onClick={() => setUseLocalPasscode(!useLocalPasscode)}
-              className="text-[11px] font-bold text-[#C5A059] hover:underline flex items-center justify-between w-full cursor-pointer"
+              className="text-xs font-bold text-[#C5A059] hover:underline flex items-center justify-between w-full cursor-pointer py-1"
             >
-              <span>Usar Senha Padrão Local (1234)</span>
-              {useLocalPasscode ? <ChevronUp className="w-3.5 h-3.5" /> : <ChevronDown className="w-3.5 h-3.5" />}
+              <span>Acessar com Senha Padrão (1234)</span>
+              {useLocalPasscode ? <ChevronUp className="w-4 h-4" /> : <ChevronDown className="w-4 h-4" />}
             </button>
 
             {useLocalPasscode && (
-              <form onSubmit={handleAuthSubmit} className="mt-3 space-y-3 pt-2 border-t border-dashed border-[#E5DFD5]">
+              <form onSubmit={handleAuthSubmit} className="mt-3 space-y-3 pt-3 border-t border-dashed border-[#E5DFD5]">
                 <input 
                   type="password"
-                  placeholder="Senha Local (padrão: 1234)"
+                  placeholder="Senha Padrão (1234)"
                   value={passwordInput}
                   onChange={e => setPasswordInput(e.target.value)}
-                  className="w-full px-4 py-2 text-xs border border-[#E5DFD5] bg-[#FAF9F6] rounded-xl outline-none font-sans"
+                  className="w-full px-4 py-3 text-base sm:text-xs border border-[#E5DFD5] bg-white rounded-xl outline-none font-sans"
                 />
                 <button
                   type="submit"
-                  className="w-full py-2 bg-[#F2ECE4] hover:bg-[#E5DFD5] text-[#2D2D2D] font-bold text-[10px] uppercase tracking-wider rounded-xl transition flex items-center justify-center space-x-1.5 cursor-pointer"
+                  className="w-full py-3 bg-[#F2ECE4] hover:bg-[#E5DFD5] text-[#2D2D2D] font-bold text-xs uppercase tracking-wider rounded-xl transition flex items-center justify-center space-x-2 cursor-pointer active:scale-95"
                 >
-                  <Unlock className="w-3.5 h-3.5 text-[#C5A059]" />
-                  <span>Entrar com Senha Local</span>
+                  <Unlock className="w-4 h-4 text-[#C5A059]" />
+                  <span>Entrar com Senha Padrão</span>
                 </button>
               </form>
             )}
           </div>
 
-          <div className="pt-2">
-            <a
-              href="/"
-              onClick={(e) => {
-                e.preventDefault();
-                window.location.hash = '';
-                window.history.pushState({}, '', '/');
-                window.dispatchEvent(new Event('popstate'));
-              }}
-              className="w-full py-2.5 px-3 bg-[#FAF9F6] hover:bg-[#F2ECE4] text-[#2D2D2D] text-xs font-bold uppercase tracking-wider rounded-xl border border-[#E5DFD5] transition flex items-center justify-center space-x-2 cursor-pointer"
-            >
-              <ArrowLeft className="w-3.5 h-3.5 text-[#C5A059]" />
-              <span>Voltar para o Site</span>
-            </a>
-          </div>
         </div>
       </div>
     );
@@ -587,8 +594,8 @@ export const AdminPanel: React.FC<AdminPanelProps> = ({
                   : 'bg-[#FAF9F6] text-[#2D2D2D]/80 hover:bg-[#F2ECE4] border border-[#E5DFD5]'
               }`}
             >
-              <Database className="w-3.5 h-3.5 text-[#FFCA28] shrink-0" />
-              <span className="truncate">Firebase DB</span>
+              <Database className="w-3.5 h-3.5 text-[#C5A059] shrink-0" />
+              <span className="truncate">Banco em Nuvem</span>
             </button>
           </div>
         </div>
@@ -729,16 +736,33 @@ export const AdminPanel: React.FC<AdminPanelProps> = ({
               <p className="text-xs text-[#2D2D2D]/60 font-sans">Acompanhe as confirmações de presença e acompanhantes</p>
             </div>
 
-            <button
-              onClick={() => {
-                setSelectedGuestForEdit(null);
-                setIsGuestModalOpen(true);
-              }}
-              className="px-5 py-3 bg-[#2D2D2D] hover:bg-black active:scale-95 text-white font-bold text-[10px] uppercase tracking-[0.2em] rounded-2xl shadow-xs transition-all flex items-center space-x-2 self-start sm:self-auto"
-            >
-              <Plus className="w-4 h-4 text-[#C5A059]" />
-              <span>Adicionar Convidado</span>
-            </button>
+            <div className="flex flex-wrap items-center gap-2 self-start sm:self-auto">
+              {guests.length > 0 && onClearGuests && (
+                <button
+                  type="button"
+                  onClick={async () => {
+                    if (confirm('Deseja realmente ZERAR a lista de convidados? Todos os convidados e confirmações do evento atual serão removidos.')) {
+                      await onClearGuests();
+                    }
+                  }}
+                  className="px-4 py-3 bg-white border border-rose-200 text-rose-700 hover:bg-rose-50 active:scale-95 font-bold text-[10px] uppercase tracking-wider rounded-2xl transition-all flex items-center space-x-1.5 cursor-pointer shadow-2xs"
+                >
+                  <Trash2 className="w-3.5 h-3.5 text-rose-500" />
+                  <span>Zerar Lista ({guests.length})</span>
+                </button>
+              )}
+
+              <button
+                onClick={() => {
+                  setSelectedGuestForEdit(null);
+                  setIsGuestModalOpen(true);
+                }}
+                className="px-5 py-3 bg-[#2D2D2D] hover:bg-black active:scale-95 text-white font-bold text-[10px] uppercase tracking-[0.2em] rounded-2xl shadow-xs transition-all flex items-center space-x-2 cursor-pointer"
+              >
+                <Plus className="w-4 h-4 text-[#C5A059]" />
+                <span>Adicionar Convidado</span>
+              </button>
+            </div>
           </div>
 
           {/* Search & Filter bar */}
@@ -938,19 +962,50 @@ export const AdminPanel: React.FC<AdminPanelProps> = ({
           <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
             <div>
               <h2 className="font-serif text-2xl font-bold text-[#2D2D2D]">Gestão de Presentes</h2>
-              <p className="text-xs text-[#2D2D2D]/60 font-sans">Cadastre itens, edite preferências ou libere presentes escolhidos</p>
+              <p className="text-xs text-[#2D2D2D]/60 font-sans">Cadastre itens, edite preferências ou libere presentes escolhidos ({gifts.length} itens na lista)</p>
             </div>
 
-            <button
-              onClick={() => {
-                setSelectedGiftForEdit(null);
-                setIsGiftModalOpen(true);
-              }}
-              className="px-5 py-3 bg-[#2D2D2D] hover:bg-black active:scale-95 text-white font-bold text-[10px] uppercase tracking-[0.2em] rounded-2xl shadow-xs transition-all flex items-center space-x-2 self-start sm:self-auto"
-            >
-              <Plus className="w-4 h-4 text-[#C5A059]" />
-              <span>Cadastrar Novo Presente</span>
-            </button>
+            <div className="flex flex-wrap items-center gap-2 self-start sm:self-auto">
+              {onImportTemplateGifts && (
+                <button
+                  onClick={() => {
+                    if (gifts.length > 0 && !confirm('Sua lista já possui itens. Deseja carregar as 20 sugestões padrão de presentes?')) return;
+                    onImportTemplateGifts();
+                  }}
+                  className="px-3.5 py-2.5 bg-[#F2ECE4] hover:bg-[#E5DFD5] text-[#2D2D2D] font-bold text-[10px] uppercase tracking-wider rounded-2xl border border-[#E5DFD5] transition flex items-center space-x-1.5 cursor-pointer active:scale-95 shadow-2xs"
+                  title="Carregar 20 sugestões prontas de presentes"
+                >
+                  <Sparkles className="w-3.5 h-3.5 text-[#C5A059]" />
+                  <span>Carregar 20 Sugestões</span>
+                </button>
+              )}
+
+              {onClearGifts && gifts.length > 0 && (
+                <button
+                  onClick={() => {
+                    if (confirm('Tem certeza que deseja apagar TODOS os presentes da lista?')) {
+                      onClearGifts();
+                    }
+                  }}
+                  className="px-3 py-2.5 bg-rose-50 hover:bg-rose-100 text-rose-700 font-bold text-[10px] uppercase tracking-wider rounded-2xl border border-rose-200 transition flex items-center space-x-1 cursor-pointer active:scale-95"
+                  title="Limpar todos os presentes da lista"
+                >
+                  <Trash2 className="w-3.5 h-3.5" />
+                  <span>Zerar Lista</span>
+                </button>
+              )}
+
+              <button
+                onClick={() => {
+                  setSelectedGiftForEdit(null);
+                  setIsGiftModalOpen(true);
+                }}
+                className="px-4 py-2.5 bg-[#2D2D2D] hover:bg-black active:scale-95 text-white font-bold text-[10px] uppercase tracking-[0.15em] rounded-2xl shadow-xs transition-all flex items-center space-x-1.5 cursor-pointer"
+              >
+                <Plus className="w-4 h-4 text-[#C5A059]" />
+                <span>Novo Presente</span>
+              </button>
+            </div>
           </div>
 
           {/* Search & Category Filter */}
@@ -1004,8 +1059,25 @@ export const AdminPanel: React.FC<AdminPanelProps> = ({
                 <tbody className="divide-y divide-[#E5DFD5] text-[#2D2D2D]">
                   {filteredGifts.length === 0 ? (
                     <tr>
-                      <td colSpan={5} className="p-8 text-center text-[#2D2D2D]/50 italic">
-                        Nenhum presente encontrado.
+                      <td colSpan={5} className="p-10 text-center">
+                        <div className="max-w-sm mx-auto space-y-3">
+                          <div className="w-12 h-12 bg-[#F2ECE4] text-[#C5A059] rounded-2xl flex items-center justify-center mx-auto shadow-2xs">
+                            <GiftIcon className="w-6 h-6" />
+                          </div>
+                          <h4 className="font-serif italic font-bold text-lg text-[#2D2D2D]">Sua lista de presentes está vazia</h4>
+                          <p className="text-xs text-[#2D2D2D]/60 font-sans leading-relaxed">
+                            Cadastre seus presentes manualmente ou carregue a lista com 20 sugestões padrão de Chá de Panela com 1 clique.
+                          </p>
+                          {onImportTemplateGifts && (
+                            <button
+                              onClick={() => onImportTemplateGifts()}
+                              className="mt-2 px-4 py-2.5 bg-[#2D2D2D] hover:bg-black text-white font-bold text-[10px] uppercase tracking-wider rounded-xl transition flex items-center justify-center space-x-1.5 mx-auto cursor-pointer shadow-xs active:scale-95"
+                            >
+                              <Sparkles className="w-3.5 h-3.5 text-[#C5A059]" />
+                              <span>Carregar 20 Sugestões Padrão</span>
+                            </button>
+                          )}
+                        </div>
                       </td>
                     </tr>
                   ) : (
@@ -1337,17 +1409,17 @@ export const AdminPanel: React.FC<AdminPanelProps> = ({
         </div>
       )}
 
-      {/* TAB 6: BANCO DE DADOS FIREBASE */}
+      {/* TAB 6: BANCO DE DADOS EM NUVEM */}
       {activeTab === 'firebase' && (
         <div className="bg-white rounded-3xl p-6 sm:p-8 border border-[#E5DFD5] shadow-xs max-w-3xl mx-auto space-y-6">
           <div className="flex items-start justify-between border-b border-[#E5DFD5] pb-5">
             <div className="space-y-1">
               <div className="flex items-center space-x-2">
-                <Database className="w-5 h-5 text-[#FFCA28]" />
-                <h2 className="font-serif italic text-2xl font-bold text-[#2D2D2D]">Integração Firebase</h2>
+                <Database className="w-5 h-5 text-[#C5A059]" />
+                <h2 className="font-serif italic text-2xl font-bold text-[#2D2D2D]">Banco de Dados em Nuvem</h2>
               </div>
               <p className="text-xs text-[#2D2D2D]/60 font-sans">
-                Conectado ao seu projeto Firebase em nuvem (Firestore Database & Auth)
+                Sincronização instantânea e armazenamento em nuvem com criptografia de ponta a ponta
               </p>
             </div>
             <div className="px-3 py-1 rounded-full text-[10px] font-bold uppercase tracking-wider flex items-center space-x-1.5 bg-emerald-50 text-emerald-700 border border-emerald-200">
@@ -1370,29 +1442,29 @@ export const AdminPanel: React.FC<AdminPanelProps> = ({
             </div>
           )}
 
-          {/* Firebase Credentials Details */}
+          {/* Credentials Details */}
           <div className="space-y-4">
             <div className="p-4 bg-[#FAF9F6] border border-[#E5DFD5] rounded-2xl space-y-3">
               <h3 className="text-xs font-bold text-[#2D2D2D] uppercase tracking-wider flex items-center space-x-2">
                 <Sparkles className="w-3.5 h-3.5 text-[#C5A059]" />
-                <span>Configuração Firebase Ativa</span>
+                <span>Status do Armazenamento em Nuvem</span>
               </h3>
               
               <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 text-xs">
                 <div>
-                  <span className="text-[10px] font-bold text-[#2D2D2D]/60 block uppercase">Project ID</span>
+                  <span className="text-[10px] font-bold text-[#2D2D2D]/60 block uppercase">Identificador de Projeto</span>
                   <span className="font-mono text-[#2D2D2D] font-bold">{firebaseConfig.projectId}</span>
                 </div>
                 <div>
-                  <span className="text-[10px] font-bold text-[#2D2D2D]/60 block uppercase">Auth Domain</span>
+                  <span className="text-[10px] font-bold text-[#2D2D2D]/60 block uppercase">Domínio Seguro</span>
                   <span className="font-mono text-[#2D2D2D] font-bold">{firebaseConfig.authDomain}</span>
                 </div>
                 <div>
-                  <span className="text-[10px] font-bold text-[#2D2D2D]/60 block uppercase">App ID</span>
+                  <span className="text-[10px] font-bold text-[#2D2D2D]/60 block uppercase">Chave da Aplicação</span>
                   <span className="font-mono text-[#2D2D2D] font-bold truncate block">{firebaseConfig.appId}</span>
                 </div>
                 <div>
-                  <span className="text-[10px] font-bold text-[#2D2D2D]/60 block uppercase">Storage Bucket</span>
+                  <span className="text-[10px] font-bold text-[#2D2D2D]/60 block uppercase">Servidor de Fotos/Mídia</span>
                   <span className="font-mono text-[#2D2D2D] font-bold truncate block">{firebaseConfig.storageBucket}</span>
                 </div>
               </div>

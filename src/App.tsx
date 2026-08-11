@@ -5,19 +5,38 @@ import { HomePage } from './components/HomePage';
 import { GiftsPage } from './components/GiftsPage';
 import { LoginPage } from './components/LoginPage';
 import { AdminPanel } from './components/AdminPanel';
-import { Heart, Sparkles, ArrowLeft } from 'lucide-react';
+import { LandingPage } from './components/LandingPage';
+import { Heart, Sparkles, ArrowLeft, Home, User, Gift as GiftIcon, ShieldCheck, Menu, X } from 'lucide-react';
 import { subscribeToAuthChanges, logoutFirebase } from './lib/firebase';
+
+const getCoupleSlug = (brideName?: string, groomName?: string): string => {
+  const bride = brideName || 'mariana';
+  const groom = groomName || 'lucas';
+  return `${bride}-e-${groom}`
+    .toLowerCase()
+    .normalize('NFD')
+    .replace(/[\u0300-\u036f]/g, '')
+    .replace(/[^a-z0-9]+/g, '-');
+};
 
 const getRouteFromPath = (path: string): AppRoute => {
   const p = path.toLowerCase();
+  if (p.includes('/casal') || p.includes('/evento') || p.includes('-e-')) return 'casal';
   if (p.includes('/presentes') || p.includes('/gifts')) return 'presentes';
-  if (p.includes('/login')) return 'login';
-  if (p.includes('/noiva') || p.includes('/admin')) return 'noiva';
+  if (p.includes('/login') || p.includes('/entrar')) return 'login';
+  if (p.includes('/noiva') || p.includes('/admin') || p.includes('/painel')) return 'noiva';
   return 'home';
 };
 
-const getPathFromRoute = (route: AppRoute): string => {
+const getPathFromRoute = (route: AppRoute, data?: AppData): string => {
   switch (route) {
+    case 'casal': {
+      if (data?.eventInfo) {
+        const slug = getCoupleSlug(data.eventInfo.brideName, data.eventInfo.groomName);
+        return `/casal/${slug}`;
+      }
+      return '/casal/mariana-e-lucas';
+    }
     case 'presentes': return '/presentes';
     case 'login': return '/login';
     case 'noiva': return '/noiva';
@@ -31,6 +50,8 @@ export default function App() {
   const [loading, setLoading] = useState(true);
   const [copiedLink, setCopiedLink] = useState(false);
   const [toastMessage, setToastMessage] = useState<string | null>(null);
+
+  const [isMobileMenuOpen, setIsMobileMenuOpen] = useState(false);
 
   // URL-Based Route State
   const [currentRoute, setCurrentRoute] = useState<AppRoute>(() => {
@@ -85,7 +106,7 @@ export default function App() {
   }, []);
 
   const navigate = (route: AppRoute) => {
-    const path = getPathFromRoute(route);
+    const path = getPathFromRoute(route, data);
     if (window.location.pathname !== path) {
       window.history.pushState({}, '', path);
     }
@@ -212,6 +233,39 @@ export default function App() {
     showToast('Informações do evento salvas!');
   };
 
+  const handleRegisterCouple = async (info: Partial<EventInfo>) => {
+    const res = await fetch('/api/register-couple', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(info)
+    });
+
+    if (!res.ok) throw new Error('Erro ao cadastrar novo casal');
+    await fetchData();
+    showToast('Chá de Panela cadastrado para o casal!');
+  };
+
+  const handleClearGuests = async () => {
+    const res = await fetch('/api/clear-guests', { method: 'POST' });
+    if (!res.ok) throw new Error('Erro ao zerar convidados');
+    await fetchData();
+    showToast('Lista de convidados zerada!');
+  };
+
+  const handleClearGifts = async () => {
+    const res = await fetch('/api/clear-gifts', { method: 'POST' });
+    if (!res.ok) throw new Error('Erro ao zerar lista de presentes');
+    await fetchData();
+    showToast('Lista de presentes zerada com sucesso!');
+  };
+
+  const handleImportTemplateGifts = async () => {
+    const res = await fetch('/api/import-template-gifts', { method: 'POST' });
+    if (!res.ok) throw new Error('Erro ao importar sugestões');
+    await fetchData();
+    showToast('20 sugestões de presentes carregadas com sucesso!');
+  };
+
   const handleSaveGuest = async (guestData: Omit<Guest, 'id' | 'updatedAt'> & { id?: string }) => {
     const method = guestData.id ? 'PUT' : 'POST';
     const url = guestData.id ? `/api/guests/${guestData.id}` : '/api/guests';
@@ -295,9 +349,229 @@ export default function App() {
         </div>
       )}
 
+      {/* Top Navigation Bar */}
+      <header className="no-print bg-white/95 backdrop-blur-md sticky top-0 z-40 border-b border-[#E5DFD5] shadow-2xs">
+        <div className="max-w-6xl mx-auto px-4 py-3 flex items-center justify-between gap-3">
+          <button 
+            onClick={() => navigate('home')}
+            className="flex items-center space-x-2 text-[#2D2D2D] font-bold hover:opacity-80 transition cursor-pointer shrink-0"
+          >
+            <div className="w-9 h-9 rounded-xl bg-[#F2ECE4] border border-[#E5DFD5] flex items-center justify-center text-[#C5A059] shadow-2xs">
+              <Heart className="w-5 h-5 fill-current text-[#C5A059]" />
+            </div>
+            <div className="text-left">
+              <span className="font-serif tracking-tight text-base sm:text-lg font-bold block leading-none">Chá de Panela</span>
+              <span className="text-[10px] text-[#C5A059] font-sans font-semibold tracking-wider uppercase block sm:hidden">
+                {data.eventInfo.brideName} & {data.eventInfo.groomName}
+              </span>
+            </div>
+          </button>
+
+          {/* Desktop Nav Items */}
+          <nav className="hidden md:flex items-center space-x-2 text-xs font-bold uppercase tracking-wider">
+            <button
+              onClick={() => navigate('home')}
+              className={`px-3.5 py-2 rounded-xl transition cursor-pointer flex items-center space-x-1.5 ${
+                currentRoute === 'home' 
+                  ? 'bg-[#2D2D2D] text-white shadow-xs' 
+                  : 'text-[#2D2D2D]/80 hover:bg-[#F2ECE4]'
+              }`}
+            >
+              <Home className="w-4 h-4 text-[#C5A059]" />
+              <span>Início</span>
+            </button>
+
+            <button
+              onClick={() => navigate('casal')}
+              className={`px-3.5 py-2 rounded-xl transition cursor-pointer flex items-center space-x-1.5 ${
+                currentRoute === 'casal' 
+                  ? 'bg-[#2D2D2D] text-white shadow-xs' 
+                  : 'text-[#2D2D2D]/80 hover:bg-[#F2ECE4]'
+              }`}
+            >
+              <Sparkles className="w-4 h-4 text-[#C5A059]" />
+              <span>Site do Casal</span>
+            </button>
+
+            <button
+              onClick={() => navigate('presentes')}
+              className={`px-3.5 py-2 rounded-xl transition cursor-pointer flex items-center space-x-1.5 ${
+                currentRoute === 'presentes' 
+                  ? 'bg-[#2D2D2D] text-white shadow-xs' 
+                  : 'text-[#2D2D2D]/80 hover:bg-[#F2ECE4]'
+              }`}
+            >
+              <GiftIcon className="w-4 h-4 text-[#C5A059]" />
+              <span>Presentes</span>
+            </button>
+
+            <button
+              onClick={() => navigate('login')}
+              className={`px-3.5 py-2 rounded-xl transition cursor-pointer flex items-center space-x-1.5 ${
+                currentRoute === 'login' 
+                  ? 'bg-[#2D2D2D] text-white shadow-xs' 
+                  : 'text-[#2D2D2D]/80 hover:bg-[#F2ECE4]'
+              }`}
+            >
+              <User className="w-4 h-4 text-[#C5A059]" />
+              <span>Convidado</span>
+            </button>
+
+            <button
+              onClick={() => navigate('noiva')}
+              className={`px-3.5 py-2 rounded-xl transition cursor-pointer border flex items-center space-x-1.5 ${
+                currentRoute === 'noiva' 
+                  ? 'bg-[#C5A059] text-white border-[#C5A059] shadow-xs' 
+                  : 'border-[#C5A059]/40 text-[#C5A059] hover:bg-[#C5A059]/10'
+              }`}
+            >
+              <ShieldCheck className="w-4 h-4" />
+              <span>Painel do Casal</span>
+            </button>
+          </nav>
+
+          {/* Mobile Hamburger Button */}
+          <div className="sm:hidden flex items-center space-x-2">
+            <button
+              onClick={() => setIsMobileMenuOpen(!isMobileMenuOpen)}
+              className="p-2.5 bg-[#FAF9F6] border border-[#E5DFD5] text-[#2D2D2D] rounded-xl hover:bg-[#F2ECE4] transition cursor-pointer active:scale-95 shadow-2xs flex items-center space-x-1.5"
+              aria-label="Menu Principal"
+            >
+              {isMobileMenuOpen ? (
+                <X className="w-5 h-5 text-[#C5A059]" />
+              ) : (
+                <Menu className="w-5 h-5 text-[#2D2D2D]" />
+              )}
+            </button>
+          </div>
+        </div>
+      </header>
+
+      {/* Modern Mobile Slide Hamburger Menu Overlay */}
+      {isMobileMenuOpen && (
+        <div className="fixed inset-0 z-50 sm:hidden flex flex-col bg-[#2D2D2D]/70 backdrop-blur-md animate-fade-in no-print">
+          <div className="bg-white w-full border-b-2 border-[#C5A059] p-5 shadow-2xl rounded-b-[2rem] space-y-5 animate-slide-down">
+            <div className="flex items-center justify-between border-b border-[#E5DFD5] pb-4">
+              <div className="flex items-center space-x-2.5">
+                <div className="w-10 h-10 rounded-xl bg-[#F2ECE4] border border-[#E5DFD5] flex items-center justify-center text-[#C5A059] shadow-2xs">
+                  <Heart className="w-5 h-5 fill-current text-[#C5A059]" />
+                </div>
+                <div>
+                  <span className="font-serif font-bold text-base text-[#2D2D2D] block leading-none">Chá de Panela</span>
+                  <span className="text-[10px] font-extrabold text-[#C5A059] uppercase tracking-widest block pt-1">
+                    {data.eventInfo.brideName} & {data.eventInfo.groomName}
+                  </span>
+                </div>
+              </div>
+
+              <button
+                onClick={() => setIsMobileMenuOpen(false)}
+                className="p-2 bg-[#FAF9F6] border border-[#E5DFD5] text-[#2D2D2D] rounded-xl hover:bg-[#F2ECE4] transition cursor-pointer active:scale-95"
+              >
+                <X className="w-5 h-5 text-[#C5A059]" />
+              </button>
+            </div>
+
+            <nav className="space-y-2.5">
+              <button
+                onClick={() => { navigate('home'); setIsMobileMenuOpen(false); }}
+                className={`w-full p-4 rounded-2xl transition flex items-center justify-between text-xs font-bold uppercase tracking-wider cursor-pointer ${
+                  currentRoute === 'home' 
+                    ? 'bg-[#2D2D2D] text-white shadow-md' 
+                    : 'bg-[#FAF9F6] text-[#2D2D2D] border border-[#E5DFD5] hover:bg-[#F2ECE4]'
+                }`}
+              >
+                <div className="flex items-center space-x-3">
+                  <Home className="w-4 h-4 text-[#C5A059]" />
+                  <span>Início</span>
+                </div>
+                {currentRoute === 'home' && <span className="w-2.5 h-2.5 rounded-full bg-[#C5A059]" />}
+              </button>
+
+              <button
+                onClick={() => { navigate('casal'); setIsMobileMenuOpen(false); }}
+                className={`w-full p-4 rounded-2xl transition flex items-center justify-between text-xs font-bold uppercase tracking-wider cursor-pointer ${
+                  currentRoute === 'casal' 
+                    ? 'bg-[#2D2D2D] text-white shadow-md' 
+                    : 'bg-[#FAF9F6] text-[#2D2D2D] border border-[#E5DFD5] hover:bg-[#F2ECE4]'
+                }`}
+              >
+                <div className="flex items-center space-x-3">
+                  <Sparkles className="w-4 h-4 text-[#C5A059]" />
+                  <span>Site do Casal ({data.eventInfo.brideName} & {data.eventInfo.groomName})</span>
+                </div>
+                {currentRoute === 'casal' && <span className="w-2.5 h-2.5 rounded-full bg-[#C5A059]" />}
+              </button>
+
+              <button
+                onClick={() => { navigate('presentes'); setIsMobileMenuOpen(false); }}
+                className={`w-full p-4 rounded-2xl transition flex items-center justify-between text-xs font-bold uppercase tracking-wider cursor-pointer ${
+                  currentRoute === 'presentes' 
+                    ? 'bg-[#2D2D2D] text-white shadow-md' 
+                    : 'bg-[#FAF9F6] text-[#2D2D2D] border border-[#E5DFD5] hover:bg-[#F2ECE4]'
+                }`}
+              >
+                <div className="flex items-center space-x-3">
+                  <GiftIcon className="w-4 h-4 text-[#C5A059]" />
+                  <span>Lista de Presentes</span>
+                </div>
+                {availableGiftsCount > 0 && (
+                  <span className="px-2.5 py-0.5 bg-[#C5A059] text-white text-[10px] font-extrabold rounded-full shadow-2xs">
+                    {availableGiftsCount}
+                  </span>
+                )}
+              </button>
+
+              <button
+                onClick={() => { navigate('login'); setIsMobileMenuOpen(false); }}
+                className={`w-full p-4 rounded-2xl transition flex items-center justify-between text-xs font-bold uppercase tracking-wider cursor-pointer ${
+                  currentRoute === 'login' 
+                    ? 'bg-[#2D2D2D] text-white shadow-md' 
+                    : 'bg-[#FAF9F6] text-[#2D2D2D] border border-[#E5DFD5] hover:bg-[#F2ECE4]'
+                }`}
+              >
+                <div className="flex items-center space-x-3">
+                  <User className="w-4 h-4 text-[#C5A059]" />
+                  <span>Identificação do Convidado</span>
+                </div>
+              </button>
+
+              <button
+                onClick={() => { navigate('noiva'); setIsMobileMenuOpen(false); }}
+                className={`w-full p-4 rounded-2xl transition flex items-center justify-between text-xs font-bold uppercase tracking-wider cursor-pointer ${
+                  currentRoute === 'noiva' 
+                    ? 'bg-[#C5A059] text-white shadow-md' 
+                    : 'bg-[#FAF9F6] text-[#C5A059] border border-[#C5A059]/40 hover:bg-[#C5A059]/10'
+                }`}
+              >
+                <div className="flex items-center space-x-3">
+                  <ShieldCheck className="w-4 h-4" />
+                  <span>Painel do Casal</span>
+                </div>
+              </button>
+            </nav>
+
+            <div className="pt-2 text-center text-[11px] text-[#2D2D2D]/60 font-sans">
+              Toque fora do menu para fechar
+            </div>
+          </div>
+
+          <div className="flex-1" onClick={() => setIsMobileMenuOpen(false)} />
+        </div>
+      )}
+
       {/* Main Content Area based on URL Route */}
       <main className="flex-1 w-full py-4 sm:py-8 px-2 sm:px-4">
         {currentRoute === 'home' && (
+          <LandingPage 
+            eventInfo={data.eventInfo}
+            onNavigate={navigate}
+            onUpdateEventInfo={handleUpdateEventInfo}
+            onRegisterCouple={handleRegisterCouple}
+          />
+        )}
+
+        {currentRoute === 'casal' && (
           <HomePage 
             eventInfo={data.eventInfo}
             guests={data.guests}
@@ -332,15 +606,11 @@ export default function App() {
           <div className="max-w-7xl mx-auto space-y-4">
             <div className="flex items-center justify-between bg-white px-6 py-3 rounded-2xl border border-[#E5DFD5] shadow-xs">
               <span className="font-serif italic font-bold text-lg text-[#2D2D2D]">
-                Painel da Noiva & Noivo
+                Painel do Casal ({data.eventInfo.brideName} & {data.eventInfo.groomName})
               </span>
-              <button
-                onClick={() => navigate('home')}
-                className="px-3.5 py-2 text-xs font-bold bg-[#FAF9F6] border border-[#E5DFD5] hover:bg-[#F2ECE4] text-[#2D2D2D] rounded-xl transition flex items-center space-x-1.5 cursor-pointer shadow-2xs active:scale-95"
-              >
-                <ArrowLeft className="w-4 h-4 text-[#C5A059]" />
-                <span>Voltar</span>
-              </button>
+              <span className="text-xs font-bold text-[#C5A059] uppercase tracking-wider bg-[#F2ECE4] px-3 py-1 rounded-full border border-[#E5DFD5]">
+                Acesso Restrito
+              </span>
             </div>
             <AdminPanel 
               eventInfo={data.eventInfo}
@@ -353,20 +623,35 @@ export default function App() {
               onDeleteGift={handleDeleteGift}
               onUnclaimGift={handleUnclaimGift}
               onResetData={handleResetData}
+              onClearGuests={handleClearGuests}
+              onClearGifts={handleClearGifts}
+              onImportTemplateGifts={handleImportTemplateGifts}
             />
           </div>
         )}
       </main>
 
       {/* Footer minimal */}
-      <footer className="no-print py-6 text-center text-xs text-[#2D2D2D]/50 border-t border-[#E5DFD5]/60 bg-white/50">
-        <div className="flex items-center justify-center space-x-1 font-serif text-sm text-[#2D2D2D]">
-          <span>{data.eventInfo.brideName}</span>
-          <Heart className="w-3.5 h-3.5 text-[#C5A059] fill-current" />
-          <span>{data.eventInfo.groomName}</span>
-        </div>
-        <p className="mt-1 text-[11px] font-sans text-[#2D2D2D]/60">Chá de Panela • Lista de Presentes & Confirmação de Presença</p>
-      </footer>
+      {currentRoute === 'home' ? (
+        <footer className="no-print py-8 text-center text-xs text-[#2D2D2D]/60 border-t border-[#E5DFD5] bg-[#FAF9F6]">
+          <div className="flex items-center justify-center space-x-2 font-extrabold text-sm text-[#2D2D2D]">
+            <Sparkles className="w-4 h-4 text-[#C5A059]" />
+            <span>Plataforma Chá de Panela</span>
+          </div>
+          <p className="mt-1.5 text-xs text-[#2D2D2D]/70 font-medium max-w-sm mx-auto">
+            Crie o site personalizado, receba confirmações de presença e gerencie sua lista de presentes em um só lugar.
+          </p>
+        </footer>
+      ) : (
+        <footer className="no-print py-6 text-center text-xs text-[#2D2D2D]/50 border-t border-[#E5DFD5]/60 bg-white/50">
+          <div className="flex items-center justify-center space-x-1 font-serif text-sm text-[#2D2D2D]">
+            <span>{data.eventInfo.brideName}</span>
+            <Heart className="w-3.5 h-3.5 text-[#C5A059] fill-current" />
+            <span>{data.eventInfo.groomName}</span>
+          </div>
+          <p className="mt-1 text-[11px] font-sans text-[#2D2D2D]/60">Chá de Panela • Lista de Presentes & Confirmação de Presença</p>
+        </footer>
+      )}
     </div>
   );
 }

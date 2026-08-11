@@ -1,6 +1,6 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import { Gift, GiftCategory } from '../types';
-import { Gift as GiftIcon, X, Check, Link as LinkIcon, DollarSign, Tag, Info } from 'lucide-react';
+import { Gift as GiftIcon, X, Check, Link as LinkIcon, DollarSign, Tag, Info, Upload, Image as ImageIcon, Trash2 } from 'lucide-react';
 
 interface GiftModalProps {
   isOpen: boolean;
@@ -24,10 +24,12 @@ export const GiftModal: React.FC<GiftModalProps> = ({ isOpen, gift, onClose, onS
   const [description, setDescription] = useState('');
   const [priceRange, setPriceRange] = useState('');
   const [suggestedUrl, setSuggestedUrl] = useState('');
+  const [imageUrl, setImageUrl] = useState('');
   const [isClaimed, setIsClaimed] = useState(false);
   const [claimedByGuestName, setClaimedByGuestName] = useState('');
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
+  const fileInputRef = useRef<HTMLInputElement>(null);
 
   useEffect(() => {
     if (gift) {
@@ -36,6 +38,7 @@ export const GiftModal: React.FC<GiftModalProps> = ({ isOpen, gift, onClose, onS
       setDescription(gift.description || '');
       setPriceRange(gift.priceRange || '');
       setSuggestedUrl(gift.suggestedUrl || '');
+      setImageUrl(gift.imageUrl || '');
       setIsClaimed(Boolean(gift.isClaimed));
       setClaimedByGuestName(gift.claimedByGuestName || '');
     } else {
@@ -44,12 +47,58 @@ export const GiftModal: React.FC<GiftModalProps> = ({ isOpen, gift, onClose, onS
       setDescription('');
       setPriceRange('');
       setSuggestedUrl('');
+      setImageUrl('');
       setIsClaimed(false);
       setClaimedByGuestName('');
     }
   }, [gift, isOpen]);
 
   if (!isOpen) return null;
+
+  const handleImageUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+
+    if (!file.type.startsWith('image/')) {
+      setError('Por favor, selecione um arquivo de imagem válido (JPG, PNG).');
+      return;
+    }
+
+    const reader = new FileReader();
+    reader.onload = (event) => {
+      const img = new Image();
+      img.onload = () => {
+        const canvas = document.createElement('canvas');
+        let width = img.width;
+        let height = img.height;
+        const MAX_SIZE = 800;
+
+        if (width > height) {
+          if (width > MAX_SIZE) {
+            height *= MAX_SIZE / width;
+            width = MAX_SIZE;
+          }
+        } else {
+          if (height > MAX_SIZE) {
+            width *= MAX_SIZE / height;
+            height = MAX_SIZE;
+          }
+        }
+
+        canvas.width = width;
+        canvas.height = height;
+        const ctx = canvas.getContext('2d');
+        if (ctx) {
+          ctx.drawImage(img, 0, 0, width, height);
+          setImageUrl(canvas.toDataURL('image/jpeg', 0.82));
+        } else {
+          setImageUrl(event.target?.result as string);
+        }
+      };
+      img.src = event.target?.result as string;
+    };
+    reader.readAsDataURL(file);
+  };
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -68,6 +117,7 @@ export const GiftModal: React.FC<GiftModalProps> = ({ isOpen, gift, onClose, onS
         description: description.trim() || undefined,
         priceRange: priceRange.trim() || undefined,
         suggestedUrl: suggestedUrl.trim() || undefined,
+        imageUrl: imageUrl.trim() || undefined,
         isClaimed,
         claimedByGuestName: isClaimed ? (claimedByGuestName.trim() || undefined) : undefined,
         isCustom: gift?.isCustom || false
@@ -175,7 +225,55 @@ export const GiftModal: React.FC<GiftModalProps> = ({ isOpen, gift, onClose, onS
 
           <div>
             <label className="block text-[10px] sm:text-xs font-bold text-[#2D2D2D] uppercase tracking-[0.15em] mb-1.5">
-              Link de Exemplo para Compra (Opcional)
+              Foto do Presente (Upload ou URL)
+            </label>
+            <input 
+              type="file"
+              ref={fileInputRef}
+              onChange={handleImageUpload}
+              accept="image/*"
+              className="hidden"
+            />
+            <div className="flex items-center space-x-3 bg-[#FAF9F6] p-3 rounded-2xl border border-[#E5DFD5]">
+              {imageUrl ? (
+                <div className="relative w-16 h-16 rounded-xl overflow-hidden shrink-0 border border-[#C5A059]">
+                  <img src={imageUrl} alt="Preview" className="w-full h-full object-cover" />
+                  <button
+                    type="button"
+                    onClick={() => setImageUrl('')}
+                    className="absolute top-0.5 right-0.5 bg-rose-600 text-white p-0.5 rounded-full shadow-xs"
+                  >
+                    <Trash2 className="w-3 h-3" />
+                  </button>
+                </div>
+              ) : (
+                <div className="w-16 h-16 rounded-xl bg-[#F2ECE4] border border-dashed border-[#C5A059]/50 flex items-center justify-center shrink-0 text-[#C5A059]">
+                  <ImageIcon className="w-6 h-6" />
+                </div>
+              )}
+              <div className="flex-1 space-y-1.5">
+                <button
+                  type="button"
+                  onClick={() => fileInputRef.current?.click()}
+                  className="px-3 py-1.5 bg-white hover:bg-[#F2ECE4] text-[#2D2D2D] border border-[#E5DFD5] rounded-xl text-xs font-bold uppercase tracking-wider flex items-center space-x-1.5 shadow-2xs transition active:scale-95 cursor-pointer"
+                >
+                  <Upload className="w-3.5 h-3.5 text-[#C5A059]" />
+                  <span>{imageUrl ? 'Trocar Imagem' : 'Enviar Foto do Aparelho'}</span>
+                </button>
+                <input 
+                  type="url"
+                  placeholder="Ou cole a URL da imagem..."
+                  value={imageUrl}
+                  onChange={e => setImageUrl(e.target.value)}
+                  className="w-full px-3 py-1.5 text-xs border border-[#E5DFD5] bg-white rounded-xl focus:border-[#C5A059] outline-none font-sans"
+                />
+              </div>
+            </div>
+          </div>
+
+          <div>
+            <label className="block text-[10px] sm:text-xs font-bold text-[#2D2D2D] uppercase tracking-[0.15em] mb-1.5">
+              Link de Exemplo para Compra em Loja (Opcional)
             </label>
             <input 
               type="url"
