@@ -3,7 +3,7 @@ import { EventInfo, Gift, GiftCategory, Guest } from '../types';
 import { GuestModal } from './GuestModal';
 import { GiftModal } from './GiftModal';
 import { CouplePhotoUploader } from './CouplePhotoUploader';
-import { firebaseConfig, testFirebaseConnection, authenticateBrideAdminWithFirebase, loginWithGoogle, saveAdminToFirestore, saveCoupleToFirestore, auth, subscribeToAuthChanges, syncAllToFirestore } from '../lib/firebase';
+import { firebaseConfig, testFirebaseConnection, authenticateBrideAdminWithFirebase, loginWithGoogle, saveAdminToFirestore, saveCoupleToFirestore, auth, subscribeToAuthChanges, syncAllToFirestore, signOut } from '../lib/firebase';
 import { 
   Crown, Users, Gift as GiftIcon, CheckCircle2, Clock, XCircle, X,
   Plus, Edit, Trash2, Lock, Unlock, Settings, Share2, Printer, 
@@ -53,16 +53,25 @@ export const AdminPanel: React.FC<AdminPanelProps> = ({
   onImportTemplateGifts
 }) => {
   // Password auth
-  const [isAuthenticated, setIsAuthenticated] = useState(() => !!auth.currentUser);
+  const [isAuthenticated, setIsAuthenticated] = useState(() => {
+    try {
+      if (sessionStorage.getItem('cha_couple_authenticated') === 'true') return true;
+      if (auth.currentUser && !auth.currentUser.isAnonymous && !!auth.currentUser.email) return true;
+    } catch {
+      return false;
+    }
+    return false;
+  });
   const [passwordInput, setPasswordInput] = useState('');
   const [authError, setAuthError] = useState('');
 
   // Auto-authenticate Admin Panel when Firebase user is logged in
   useEffect(() => {
     const unsubscribe = subscribeToAuthChanges((user) => {
-      if (user) {
+      if (user && !user.isAnonymous && user.email) {
         setIsAuthenticated(true);
-        if (user.email) setAdminEmail(user.email);
+        sessionStorage.setItem('cha_couple_authenticated', 'true');
+        setAdminEmail(user.email);
       }
     });
     return () => unsubscribe();
@@ -132,6 +141,7 @@ export const AdminPanel: React.FC<AdminPanelProps> = ({
     try {
       const user = await authenticateBrideAdminWithFirebase(adminEmail.trim(), adminPassword.trim(), adminAuthMode);
       await saveCoupleToFirestore(user.uid, eventInfo, gifts, guests);
+      sessionStorage.setItem('cha_couple_authenticated', 'true');
       setIsAuthenticated(true);
       setAuthError('');
     } catch (err: any) {
@@ -149,6 +159,7 @@ export const AdminPanel: React.FC<AdminPanelProps> = ({
       const user = await loginWithGoogle();
       await saveAdminToFirestore(user, 'bride_admin');
       await saveCoupleToFirestore(user.uid, eventInfo, gifts, guests);
+      sessionStorage.setItem('cha_couple_authenticated', 'true');
       setIsAuthenticated(true);
     } catch (err: any) {
       console.error('Google Admin Auth Error:', err);
@@ -235,10 +246,12 @@ export const AdminPanel: React.FC<AdminPanelProps> = ({
     setTimeout(() => setCopiedInvite(false), 3000);
   };
 
-  // Lock Password Screen with clean, airy layout
+  // Lock Password Screen with clean, airy layout and mobile-optimized tabs
+  const [adminTabMode, setAdminTabMode] = useState<'email' | 'google'>('email');
+
   if (!isAuthenticated) {
     return (
-      <div className="min-h-[70vh] flex items-center justify-center py-8 px-4 animate-fade-in">
+      <div className="min-h-[70vh] flex items-center justify-center py-6 sm:py-8 px-3 sm:px-4 animate-fade-in">
         <div className="max-w-md w-full mx-auto space-y-6 text-center">
           
           {/* Header */}
@@ -248,7 +261,7 @@ export const AdminPanel: React.FC<AdminPanelProps> = ({
             </div>
 
             <div className="space-y-1">
-              <h2 className="text-3xl font-extrabold text-[#2D2D2D] tracking-tight">
+              <h2 className="text-2xl sm:text-3xl font-extrabold text-[#2D2D2D] tracking-tight">
                 Painel do <span className="text-[#C5A059]">Casal</span>
               </h2>
               <p className="text-xs sm:text-sm text-[#2D2D2D]/70 font-medium max-w-xs mx-auto">
@@ -258,52 +271,171 @@ export const AdminPanel: React.FC<AdminPanelProps> = ({
           </div>
 
           {authError && (
-            <div className="p-4 text-xs bg-rose-50 text-rose-800 rounded-2xl border border-rose-200 text-left font-semibold">
+            <div className="p-3.5 text-xs bg-rose-50 text-rose-800 rounded-2xl border border-rose-200 text-left font-semibold">
               {authError}
             </div>
           )}
 
-          {/* PROMINENT HIGHLIGHTED GOOGLE AUTH BUTTON & DIRECT COUPLE ACCESS */}
-          <div className="space-y-3">
+          {/* LOGIN METHOD TAB SELECTOR */}
+          <div className="flex bg-[#FAF9F6] p-1.5 rounded-2xl border border-[#E5DFD5]">
             <button
               type="button"
-              disabled={adminLoadingAuth}
-              onClick={handleAdminGoogleAuth}
-              className="w-full py-4 px-5 bg-white hover:bg-[#FAF9F6] active:scale-95 text-[#2D2D2D] font-extrabold text-sm rounded-2xl border-2 border-[#C5A059] shadow-md hover:shadow-lg transition-all flex items-center justify-center space-x-3 disabled:opacity-50 cursor-pointer group"
+              onClick={() => { setAdminTabMode('email'); setAuthError(''); }}
+              className={`flex-1 py-2.5 px-2 rounded-xl text-xs font-extrabold uppercase tracking-wider transition-all flex items-center justify-center space-x-1.5 min-h-[44px] cursor-pointer ${
+                adminTabMode === 'email' 
+                  ? 'bg-white text-[#2D2D2D] shadow-sm border border-[#E5DFD5]' 
+                  : 'text-[#2D2D2D]/60 hover:text-[#2D2D2D]'
+              }`}
             >
-              {adminLoadingAuth ? (
-                <Loader2 className="w-6 h-6 text-[#C5A059] animate-spin" />
-              ) : (
-                <div className="w-7 h-7 rounded-full bg-white p-1 border border-[#E5DFD5] flex items-center justify-center shrink-0 shadow-2xs group-hover:scale-105 transition-transform">
-                  <svg className="w-full h-full" viewBox="0 0 24 24">
-                    <path fill="#4285F4" d="M23.745 12.27c0-.7-.06-1.4-.19-2.07H12v4.51h6.6c-.29 1.52-1.14 2.82-2.4 3.68v3.05h3.88c2.27-2.09 3.665-5.17 3.665-9.17z"/>
-                    <path fill="#34A853" d="M12 24c3.24 0 5.95-1.08 7.93-2.91l-3.88-3.05c-1.08.72-2.45 1.16-4.05 1.16-3.12 0-5.77-2.11-6.72-4.96H1.28v3.15C3.25 21.3 7.31 24 12 24z"/>
-                    <path fill="#FBBC05" d="M5.28 14.24c-.25-.72-.38-1.49-.38-2.24s.13-1.52.38-2.24V6.61H1.28C.46 8.23 0 10.06 0 12s.46 3.77 1.28 5.39l4-3.15z"/>
-                    <path fill="#EA4335" d="M12 4.75c1.77 0 3.35.61 4.6 1.8l3.42-3.42C17.95 1.19 15.24 0 12 0 7.31 0 3.25 2.7 1.28 6.61l4 3.15c.95-2.85 3.6-4.96 6.72-4.96z"/>
-                  </svg>
-                </div>
-              )}
-              <span className="tracking-wide">Entrar com a Conta Google</span>
+              <Mail className="w-4 h-4 text-[#C5A059]" />
+              <span>E-mail e Senha</span>
             </button>
 
             <button
               type="button"
-              onClick={() => setIsAuthenticated(true)}
-              className="w-full py-3.5 px-5 bg-[#2D2D2D] hover:bg-black active:scale-95 text-white font-extrabold text-xs uppercase tracking-widest rounded-2xl shadow-sm transition flex items-center justify-center space-x-2 cursor-pointer"
+              onClick={() => { setAdminTabMode('google'); setAuthError(''); }}
+              className={`flex-1 py-2.5 px-2 rounded-xl text-xs font-extrabold uppercase tracking-wider transition-all flex items-center justify-center space-x-1.5 min-h-[44px] cursor-pointer ${
+                adminTabMode === 'google' 
+                  ? 'bg-white text-[#2D2D2D] shadow-sm border border-[#E5DFD5]' 
+                  : 'text-[#2D2D2D]/60 hover:text-[#2D2D2D]'
+              }`}
             >
-              <Crown className="w-4 h-4 text-[#C5A059]" />
-              <span>Acessar Painel como Noiva / Casal (Direto)</span>
+              <svg className="w-4 h-4 shrink-0" viewBox="0 0 24 24">
+                <path fill="#4285F4" d="M23.745 12.27c0-.7-.06-1.4-.19-2.07H12v4.51h6.6c-.29 1.52-1.14 2.82-2.4 3.68v3.05h3.88c2.27-2.09 3.665-5.17 3.665-9.17z"/>
+                <path fill="#34A853" d="M12 24c3.24 0 5.95-1.08 7.93-2.91l-3.88-3.05c-1.08.72-2.45 1.16-4.05 1.16-3.12 0-5.77-2.11-6.72-4.96H1.28v3.15C3.25 21.3 7.31 24 12 24z"/>
+                <path fill="#FBBC05" d="M5.28 14.24c-.25-.72-.38-1.49-.38-2.24s.13-1.52.38-2.24V6.61H1.28C.46 8.23 0 10.06 0 12s.46 3.77 1.28 5.39l4-3.15z"/>
+                <path fill="#EA4335" d="M12 4.75c1.77 0 3.35.61 4.6 1.8l3.42-3.42C17.95 1.19 15.24 0 12 0 7.31 0 3.25 2.7 1.28 6.61l4 3.15c.95-2.85 3.6-4.96 6.72-4.96z"/>
+              </svg>
+              <span>Google</span>
             </button>
-
-            <p className="text-[11px] text-[#2D2D2D]/60 font-medium">
-              Acesso instantâneo e seguro sem necessidade de senhas complexas
-            </p>
           </div>
+
+          {/* TAB 1: EMAIL & PASSWORD FORM */}
+          {adminTabMode === 'email' && (
+            <form onSubmit={handleAdminFirebaseAuthSubmit} className="space-y-4 text-left bg-white p-5 rounded-2xl border border-[#E5DFD5] shadow-xs animate-fade-in">
+              <div className="flex items-center justify-between bg-[#FAF9F6] p-1 rounded-xl border border-[#E5DFD5] text-[11px] font-extrabold uppercase tracking-wider">
+                <button
+                  type="button"
+                  onClick={() => setAdminAuthMode('login')}
+                  className={`flex-1 py-1.5 rounded-lg text-center transition cursor-pointer ${
+                    adminAuthMode === 'login' ? 'bg-[#2D2D2D] text-white shadow-2xs' : 'text-[#2D2D2D]/70'
+                  }`}
+                >
+                  Entrar (Login)
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setAdminAuthMode('register')}
+                  className={`flex-1 py-1.5 rounded-lg text-center transition cursor-pointer ${
+                    adminAuthMode === 'register' ? 'bg-[#C5A059] text-white shadow-2xs' : 'text-[#2D2D2D]/70'
+                  }`}
+                >
+                  Criar Conta do Casal
+                </button>
+              </div>
+
+              <div className="space-y-1">
+                <label className="text-[11px] font-extrabold uppercase tracking-wider text-[#2D2D2D]/80">
+                  E-mail do Casal <span className="text-rose-600">*</span>
+                </label>
+                <div className="relative">
+                  <Mail className="w-4 h-4 text-[#2D2D2D]/40 absolute left-3.5 top-1/2 -translate-y-1/2" />
+                  <input
+                    type="email"
+                    required
+                    placeholder="casal@exemplo.com"
+                    value={adminEmail}
+                    onChange={(e) => setAdminEmail(e.target.value)}
+                    className="w-full pl-10 pr-3.5 py-3 rounded-xl border border-[#E5DFD5] bg-[#FAF9F6] text-sm text-[#2D2D2D] focus:bg-white focus:outline-none focus:ring-2 focus:ring-[#C5A059]"
+                  />
+                </div>
+              </div>
+
+              <div className="space-y-1">
+                <label className="text-[11px] font-extrabold uppercase tracking-wider text-[#2D2D2D]/80">
+                  Senha <span className="text-rose-600">*</span>
+                </label>
+                <div className="relative">
+                  <Lock className="w-4 h-4 text-[#2D2D2D]/40 absolute left-3.5 top-1/2 -translate-y-1/2" />
+                  <input
+                    type={showAdminPassword ? 'text' : 'password'}
+                    required
+                    placeholder="Mínimo 6 caracteres"
+                    value={adminPassword}
+                    onChange={(e) => setAdminPassword(e.target.value)}
+                    className="w-full pl-10 pr-10 py-3 rounded-xl border border-[#E5DFD5] bg-[#FAF9F6] text-sm text-[#2D2D2D] focus:bg-white focus:outline-none focus:ring-2 focus:ring-[#C5A059]"
+                  />
+                  <button
+                    type="button"
+                    onClick={() => setShowAdminPassword(!showAdminPassword)}
+                    className="absolute right-3.5 top-1/2 -translate-y-1/2 text-[#2D2D2D]/50 hover:text-[#2D2D2D] p-1"
+                  >
+                    {showAdminPassword ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
+                  </button>
+                </div>
+              </div>
+
+              <button
+                type="submit"
+                disabled={adminLoadingAuth}
+                className="w-full py-3.5 px-5 bg-[#2D2D2D] hover:bg-black text-white text-xs font-extrabold uppercase tracking-widest rounded-xl transition shadow-md flex items-center justify-center space-x-2 disabled:opacity-50 min-h-[48px] cursor-pointer active:scale-95"
+              >
+                {adminLoadingAuth ? (
+                  <Loader2 className="w-5 h-5 text-[#C5A059] animate-spin" />
+                ) : (
+                  <>
+                    <ShieldCheck className="w-4 h-4 text-[#C5A059]" />
+                    <span>{adminAuthMode === 'login' ? 'Entrar no Painel do Casal' : 'Cadastrar e Acessar Painel'}</span>
+                  </>
+                )}
+              </button>
+            </form>
+          )}
+
+          {/* TAB 2: GOOGLE AUTH BUTTON */}
+          {adminTabMode === 'google' && (
+            <div className="space-y-3 animate-fade-in">
+              <button
+                type="button"
+                disabled={adminLoadingAuth}
+                onClick={handleAdminGoogleAuth}
+                className="w-full py-4 px-5 bg-white hover:bg-[#FAF9F6] active:scale-95 text-[#2D2D2D] font-extrabold text-sm rounded-2xl border-2 border-[#C5A059] shadow-md hover:shadow-lg transition-all flex items-center justify-center space-x-3 disabled:opacity-50 cursor-pointer min-h-[52px] group"
+              >
+                {adminLoadingAuth ? (
+                  <Loader2 className="w-6 h-6 text-[#C5A059] animate-spin" />
+                ) : (
+                  <div className="w-7 h-7 rounded-full bg-white p-1 border border-[#E5DFD5] flex items-center justify-center shrink-0 shadow-2xs group-hover:scale-105 transition-transform">
+                    <svg className="w-full h-full" viewBox="0 0 24 24">
+                      <path fill="#4285F4" d="M23.745 12.27c0-.7-.06-1.4-.19-2.07H12v4.51h6.6c-.29 1.52-1.14 2.82-2.4 3.68v3.05h3.88c2.27-2.09 3.665-5.17 3.665-9.17z"/>
+                      <path fill="#34A853" d="M12 24c3.24 0 5.95-1.08 7.93-2.91l-3.88-3.05c-1.08.72-2.45 1.16-4.05 1.16-3.12 0-5.77-2.11-6.72-4.96H1.28v3.15C3.25 21.3 7.31 24 12 24z"/>
+                      <path fill="#FBBC05" d="M5.28 14.24c-.25-.72-.38-1.49-.38-2.24s.13-1.52.38-2.24V6.61H1.28C.46 8.23 0 10.06 0 12s.46 3.77 1.28 5.39l4-3.15z"/>
+                      <path fill="#EA4335" d="M12 4.75c1.77 0 3.35.61 4.6 1.8l3.42-3.42C17.95 1.19 15.24 0 12 0 7.31 0 3.25 2.7 1.28 6.61l4 3.15c.95-2.85 3.6-4.96 6.72-4.96z"/>
+                    </svg>
+                  </div>
+                )}
+                <span className="tracking-wide">Entrar com a Conta Google</span>
+              </button>
+              <p className="text-[11px] text-[#2D2D2D]/60 font-medium">
+                Autenticação simples e direta vinculada à sua conta Google
+              </p>
+            </div>
+          )}
 
         </div>
       </div>
     );
   }
+
+  const handleCoupleLogout = async () => {
+    try {
+      sessionStorage.removeItem('cha_couple_authenticated');
+      setIsAuthenticated(false);
+      await signOut(auth);
+    } catch (e) {
+      console.error(e);
+      setIsAuthenticated(false);
+    }
+  };
 
   return (
     <div className="space-y-8 pb-16">
@@ -339,8 +471,8 @@ export const AdminPanel: React.FC<AdminPanelProps> = ({
           </button>
 
           <button
-            onClick={() => setIsAuthenticated(false)}
-            className="px-4 py-2 bg-rose-950/80 hover:bg-rose-900 text-rose-200 text-[10px] font-bold uppercase tracking-widest rounded-xl transition-all flex items-center space-x-1.5 active:scale-95"
+            onClick={handleCoupleLogout}
+            className="px-4 py-2 bg-rose-950/80 hover:bg-rose-900 text-rose-200 text-[10px] font-bold uppercase tracking-widest rounded-xl transition-all flex items-center space-x-1.5 active:scale-95 cursor-pointer"
           >
             <Lock className="w-3.5 h-3.5" />
             <span>Sair</span>

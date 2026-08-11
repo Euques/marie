@@ -1,4 +1,4 @@
-export type AppRoute = 'home' | 'casal' | 'presentes' | 'login' | 'noiva';
+export type AppRoute = 'home' | 'casal' | 'presentes' | 'login' | 'noiva' | 'superadmin';
 
 export interface GuestAuthSession {
   name: string;
@@ -15,6 +15,7 @@ export type GiftCategory =
   | 'Mimos e Outros';
 
 export interface EventInfo {
+  id?: string;
   brideName: string;
   groomName: string;
   eventTitle: string;
@@ -28,6 +29,18 @@ export interface EventInfo {
   welcomeMessage: string;
   coverImage?: string;
   adminPassword: string;
+  adminEmail?: string;
+  createdAt?: string;
+  updatedAt?: string;
+}
+
+export interface CoupleProfile {
+  id: string;
+  eventInfo: EventInfo;
+  gifts: Gift[];
+  guests: Guest[];
+  createdAt?: string;
+  updatedAt?: string;
 }
 
 export type RsvpStatus = 'confirmed' | 'declined' | 'pending';

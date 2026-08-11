@@ -57,6 +57,7 @@ export const db = (() => {
 })();
 
 export const auth = getAuth(app);
+export { signOut };
 export const storage = getStorage(
   app,
   firebaseConfig.storageBucket
@@ -157,10 +158,12 @@ export async function saveEventInfoToFirestore(info: Partial<EventInfo>): Promis
   try {
     await ensureAuth();
     const mainRef = doc(db, 'event_info', 'main');
-    const coupleRef = doc(db, 'couples', 'default');
     const payload = cleanForFirestore({ ...info, updatedAt: new Date().toISOString() });
     await setDoc(mainRef, payload, { merge: true });
-    await setDoc(coupleRef, { eventInfo: payload, updatedAt: new Date().toISOString() }, { merge: true });
+    if (info.id && info.id !== 'main') {
+      const coupleRef = doc(db, 'couples', info.id);
+      await setDoc(coupleRef, { eventInfo: payload, updatedAt: new Date().toISOString() }, { merge: true });
+    }
   } catch (err) {
     handleFirestoreError(err, OperationType.WRITE, 'event_info/main');
     throw err;
@@ -254,6 +257,30 @@ export async function loadAllFromFirestore() {
 }
 
 // Firebase Auth Helpers
+export async function saveUserToFirestore(user: FirebaseUser, extraRole?: string) {
+  try {
+    const userRef = doc(db, 'users', user.uid);
+    const docData = cleanForFirestore({
+      uid: user.uid,
+      displayName: user.displayName || 'Usuário Sem Nome',
+      email: user.email || '',
+      photoURL: user.photoURL || '',
+      isAnonymous: user.isAnonymous || false,
+      role: extraRole || (user.email?.toLowerCase() === 'euques@gmail.com' ? 'superadmin' : 'user'),
+      updatedAt: new Date().toISOString()
+    });
+    await setDoc(userRef, docData, { merge: true });
+
+    if (user.email?.toLowerCase() === 'euques@gmail.com' || extraRole === 'superadmin') {
+      const adminRef = doc(db, 'admins', user.uid);
+      await setDoc(adminRef, { ...docData, role: 'superadmin' }, { merge: true });
+      sessionStorage.setItem('cha_superadmin_authenticated', 'true');
+    }
+  } catch (e) {
+    handleFirestoreError(e, OperationType.WRITE, `users/${user.uid}`);
+  }
+}
+
 export async function loginOrRegisterWithEmail(name: string, email: string, pass: string): Promise<FirebaseUser> {
   let user: FirebaseUser;
   try {
@@ -293,13 +320,26 @@ export async function loginOrRegisterWithEmail(name: string, email: string, pass
       throw new Error(err.message || 'Falha na autenticação do Firebase.');
     }
   }
+
+  // Auto-create / update user document in Firestore
+  await saveUserToFirestore(user);
   return user;
 }
 
 export async function loginWithGoogle(): Promise<FirebaseUser> {
   const provider = new GoogleAuthProvider();
   const res = await signInWithPopup(auth, provider);
-  return res.user;
+  const user = res.user;
+
+  // Auto-create / update user document in Firestore
+  await saveUserToFirestore(user);
+
+  if (user.email?.toLowerCase() === 'euques@gmail.com') {
+    sessionStorage.setItem('cha_superadmin_authenticated', 'true');
+    await saveAdminToFirestore(user, 'superadmin');
+  }
+
+  return user;
 }
 
 export async function logoutFirebase(): Promise<void> {
@@ -331,20 +371,19 @@ export async function saveCoupleToFirestore(uid: string, eventInfo: any, gifts?:
   try {
     await ensureAuth();
     const coupleRef = doc(db, 'couples', uid);
-    const defaultRef = doc(db, 'couples', 'default');
     const mainRef = doc(db, 'event_info', 'main');
 
     const docData = cleanForFirestore({
+      id: uid,
       uid,
-      eventInfo,
+      eventInfo: { ...eventInfo, id: uid },
       gifts: gifts || [],
       guests: guests || [],
       updatedAt: new Date().toISOString()
     });
     await setDoc(coupleRef, docData, { merge: true });
-    await setDoc(defaultRef, docData, { merge: true });
     if (eventInfo) {
-      await setDoc(mainRef, cleanForFirestore({ ...eventInfo, updatedAt: new Date().toISOString() }), { merge: true });
+      await setDoc(mainRef, cleanForFirestore({ ...eventInfo, id: uid, updatedAt: new Date().toISOString() }), { merge: true });
     }
   } catch (e) {
     handleFirestoreError(e, OperationType.WRITE, `couples/${uid}`);
@@ -362,6 +401,65 @@ export async function getCoupleFromFirestore(uid: string) {
   } catch (e) {
     handleFirestoreError(e, OperationType.GET, `couples/${uid}`);
     return null;
+  }
+}
+
+export async function getAllCouplesFromFirestore(): Promise<any[]> {
+  try {
+    await ensureAuth();
+    const querySnapshot = await getDocs(collection(db, 'couples'));
+    const rawCouples: any[] = [];
+    
+    querySnapshot.forEach((docSnap) => {
+      rawCouples.push({ id: docSnap.id, ...docSnap.data() });
+    });
+
+    if (rawCouples.length === 0) return [];
+
+    // Filter out 'default' document if non-default couple profiles exist
+    const nonDefault = rawCouples.filter(c => c.id !== 'default');
+    const sourceList = nonDefault.length > 0 ? nonDefault : rawCouples;
+
+    // Deduplicate by Bride & Groom Name or ID
+    const uniqueMap = new Map<string, any>();
+
+    for (const item of sourceList) {
+      const bride = (item.eventInfo?.brideName || '').trim().toLowerCase();
+      const groom = (item.eventInfo?.groomName || '').trim().toLowerCase();
+      const title = (item.eventInfo?.eventTitle || '').trim().toLowerCase();
+      
+      // Key by names if available, otherwise by doc ID
+      const nameKey = (bride || groom) ? `${bride}_${groom}_${title}` : item.id;
+
+      if (!uniqueMap.has(nameKey)) {
+        uniqueMap.set(nameKey, item);
+      } else {
+        const existing = uniqueMap.get(nameKey);
+        // Prefer real UID over default or keep the one with more gifts / guests / recent update
+        if (existing.id === 'default' && item.id !== 'default') {
+          uniqueMap.set(nameKey, item);
+        } else if ((item.gifts?.length || 0) > (existing.gifts?.length || 0)) {
+          uniqueMap.set(nameKey, item);
+        } else if (new Date(item.updatedAt || 0) > new Date(existing.updatedAt || 0)) {
+          uniqueMap.set(nameKey, item);
+        }
+      }
+    }
+
+    return Array.from(uniqueMap.values());
+  } catch (e) {
+    handleFirestoreError(e, OperationType.LIST, 'couples');
+    return [];
+  }
+}
+
+export async function deleteCoupleFromFirestore(uid: string): Promise<void> {
+  try {
+    await ensureAuth();
+    const coupleRef = doc(db, 'couples', uid);
+    await deleteDoc(coupleRef);
+  } catch (e) {
+    handleFirestoreError(e, OperationType.DELETE, `couples/${uid}`);
   }
 }
 
