@@ -71,39 +71,43 @@ export const GuestModal: React.FC<GuestModalProps> = ({ isOpen, guest, onClose, 
   };
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-stone-900/60 backdrop-blur-xs">
-      <div className="bg-white rounded-2xl shadow-xl max-w-lg w-full overflow-hidden border border-rose-100">
-        <div className="bg-rose-50/80 px-6 py-4 border-b border-rose-100 flex items-center justify-between">
-          <div className="flex items-center space-x-2">
-            <div className="p-2 bg-rose-100 text-rose-700 rounded-xl">
+    <div className="fixed inset-0 z-50 flex items-end sm:items-center justify-center p-0 sm:p-4 bg-[#2D2D2D]/60 backdrop-blur-xs transition-all duration-300">
+      <div className="bg-white rounded-t-[2.5rem] sm:rounded-3xl shadow-2xl max-w-lg w-full overflow-hidden border-t sm:border border-[#E5DFD5] max-h-[92vh] sm:max-h-[90vh] flex flex-col transition-transform animate-slide-up sm:animate-fade-in">
+        {/* Mobile Pull Bar */}
+        <div className="w-12 h-1.5 bg-[#E5DFD5] rounded-full mx-auto mt-3 mb-1 sm:hidden shrink-0" />
+
+        <div className="bg-[#FAF9F6] px-5 sm:px-6 py-4 border-b border-[#E5DFD5] flex items-center justify-between shrink-0">
+          <div className="flex items-center space-x-3">
+            <div className="p-2.5 bg-[#F2ECE4] text-[#C5A059] rounded-2xl shadow-2xs">
               <User className="w-5 h-5" />
             </div>
             <div>
-              <h3 className="font-serif text-lg font-semibold text-stone-800">
+              <h3 className="text-base sm:text-lg font-bold text-[#2D2D2D]">
                 {guest ? 'Editar Convidado' : 'Adicionar Convidado'}
               </h3>
-              <p className="text-xs text-stone-500">
+              <p className="text-xs text-[#2D2D2D]/60 font-sans">
                 {guest ? 'Atualize as informações do convidado' : 'Cadastre um novo convidado na lista'}
               </p>
             </div>
           </div>
           <button 
+            type="button"
             onClick={onClose}
-            className="text-stone-400 hover:text-stone-600 p-1.5 rounded-lg hover:bg-rose-100/50 transition"
+            className="text-[#2D2D2D]/50 hover:text-[#2D2D2D] p-2 rounded-xl hover:bg-[#F2ECE4] transition"
           >
             <X className="w-5 h-5" />
           </button>
         </div>
 
-        <form onSubmit={handleSubmit} className="p-6 space-y-4">
+        <form onSubmit={handleSubmit} className="p-5 sm:p-6 space-y-4 overflow-y-auto flex-1">
           {error && (
-            <div className="p-3 text-xs bg-rose-100 text-rose-800 rounded-lg border border-rose-200">
+            <div className="p-3 text-xs bg-rose-50 text-rose-800 rounded-2xl border border-rose-200 font-bold">
               {error}
             </div>
           )}
 
           <div>
-            <label className="block text-xs font-semibold text-stone-700 uppercase tracking-wider mb-1">
+            <label className="block text-[10px] sm:text-xs font-bold text-[#2D2D2D] uppercase tracking-[0.15em] mb-1.5">
               Nome Completo <span className="text-rose-500">*</span>
             </label>
             <input 
@@ -112,13 +116,13 @@ export const GuestModal: React.FC<GuestModalProps> = ({ isOpen, guest, onClose, 
               placeholder="Ex: Ana Clara Lima"
               value={name}
               onChange={e => setName(e.target.value)}
-              className="w-full px-3 py-2 text-sm border border-stone-200 rounded-xl focus:ring-2 focus:ring-rose-400 outline-none transition"
+              className="w-full px-4 py-3 text-base sm:text-sm border border-[#E5DFD5] bg-[#FAF9F6] rounded-2xl focus:border-[#C5A059] focus:bg-white outline-none transition font-sans"
             />
           </div>
 
           <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
             <div>
-              <label className="block text-xs font-semibold text-stone-700 uppercase tracking-wider mb-1">
+              <label className="block text-[10px] sm:text-xs font-bold text-[#2D2D2D] uppercase tracking-[0.15em] mb-1.5">
                 WhatsApp / Celular
               </label>
               <input 
@@ -126,12 +130,12 @@ export const GuestModal: React.FC<GuestModalProps> = ({ isOpen, guest, onClose, 
                 placeholder="(11) 99999-9999"
                 value={phone}
                 onChange={e => setPhone(e.target.value)}
-                className="w-full px-3 py-2 text-sm border border-stone-200 rounded-xl focus:ring-2 focus:ring-rose-400 outline-none transition"
+                className="w-full px-4 py-3 text-base sm:text-sm border border-[#E5DFD5] bg-[#FAF9F6] rounded-2xl focus:border-[#C5A059] focus:bg-white outline-none transition font-sans"
               />
             </div>
 
             <div>
-              <label className="block text-xs font-semibold text-stone-700 uppercase tracking-wider mb-1">
+              <label className="block text-[10px] sm:text-xs font-bold text-[#2D2D2D] uppercase tracking-[0.15em] mb-1.5">
                 E-mail (Opcional)
               </label>
               <input 
@@ -139,20 +143,20 @@ export const GuestModal: React.FC<GuestModalProps> = ({ isOpen, guest, onClose, 
                 placeholder="ana@email.com"
                 value={email}
                 onChange={e => setEmail(e.target.value)}
-                className="w-full px-3 py-2 text-sm border border-stone-200 rounded-xl focus:ring-2 focus:ring-rose-400 outline-none transition"
+                className="w-full px-4 py-3 text-base sm:text-sm border border-[#E5DFD5] bg-[#FAF9F6] rounded-2xl focus:border-[#C5A059] focus:bg-white outline-none transition font-sans"
               />
             </div>
           </div>
 
           <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
             <div>
-              <label className="block text-xs font-semibold text-stone-700 uppercase tracking-wider mb-1">
+              <label className="block text-[10px] sm:text-xs font-bold text-[#2D2D2D] uppercase tracking-[0.15em] mb-1.5">
                 Acompanhantes
               </label>
               <select
                 value={companions}
                 onChange={e => setCompanions(Number(e.target.value))}
-                className="w-full px-3 py-2 text-sm border border-stone-200 rounded-xl focus:ring-2 focus:ring-rose-400 outline-none transition bg-white"
+                className="w-full px-4 py-3 text-base sm:text-sm border border-[#E5DFD5] bg-[#FAF9F6] rounded-2xl focus:border-[#C5A059] focus:bg-white outline-none transition font-sans text-[#2D2D2D]"
               >
                 <option value={0}>Apenas o convidado (0)</option>
                 <option value={1}>+ 1 acompanhante</option>
@@ -163,13 +167,13 @@ export const GuestModal: React.FC<GuestModalProps> = ({ isOpen, guest, onClose, 
             </div>
 
             <div>
-              <label className="block text-xs font-semibold text-stone-700 uppercase tracking-wider mb-1">
+              <label className="block text-[10px] sm:text-xs font-bold text-[#2D2D2D] uppercase tracking-[0.15em] mb-1.5">
                 Status da Presença
               </label>
               <select
                 value={status}
                 onChange={e => setStatus(e.target.value as RsvpStatus)}
-                className="w-full px-3 py-2 text-sm border border-stone-200 rounded-xl focus:ring-2 focus:ring-rose-400 outline-none transition bg-white"
+                className="w-full px-4 py-3 text-base sm:text-sm border border-[#E5DFD5] bg-[#FAF9F6] rounded-2xl focus:border-[#C5A059] focus:bg-white outline-none transition font-sans text-[#2D2D2D]"
               >
                 <option value="confirmed">Confirmado (Vou!)</option>
                 <option value="pending">Pendente (Aguardando)</option>
@@ -179,32 +183,32 @@ export const GuestModal: React.FC<GuestModalProps> = ({ isOpen, guest, onClose, 
           </div>
 
           <div>
-            <label className="block text-xs font-semibold text-stone-700 uppercase tracking-wider mb-1">
+            <label className="block text-[10px] sm:text-xs font-bold text-[#2D2D2D] uppercase tracking-[0.15em] mb-1.5">
               Mensagem para os noivos (Opcional)
             </label>
             <textarea 
-              rows={2}
+              rows={3}
               placeholder="Mensagem deixada pelo convidado..."
               value={message}
               onChange={e => setMessage(e.target.value)}
-              className="w-full px-3 py-2 text-sm border border-stone-200 rounded-xl focus:ring-2 focus:ring-rose-400 outline-none transition resize-none"
+              className="w-full px-4 py-3 text-base sm:text-sm border border-[#E5DFD5] bg-[#FAF9F6] rounded-2xl focus:border-[#C5A059] focus:bg-white outline-none transition font-sans resize-none"
             />
           </div>
 
-          <div className="pt-2 flex items-center justify-end space-x-3">
+          <div className="pt-3 border-t border-[#E5DFD5] flex items-center justify-end space-x-3 pb-2">
             <button
               type="button"
               onClick={onClose}
-              className="px-4 py-2 text-xs font-medium text-stone-600 hover:text-stone-800 rounded-xl hover:bg-stone-100 transition"
+              className="px-5 py-3 text-xs font-bold text-[#2D2D2D] hover:bg-[#F2ECE4] rounded-2xl transition"
             >
               Cancelar
             </button>
             <button
               type="submit"
               disabled={loading}
-              className="px-5 py-2.5 text-xs font-semibold text-white bg-rose-600 hover:bg-rose-700 active:bg-rose-800 rounded-xl shadow-md shadow-rose-200 flex items-center space-x-2 transition disabled:opacity-50"
+              className="flex-1 sm:flex-initial px-6 py-3.5 text-xs font-bold uppercase tracking-[0.15em] text-white bg-[#2D2D2D] hover:bg-black active:scale-95 rounded-2xl shadow-xs flex items-center justify-center space-x-2 transition disabled:opacity-50"
             >
-              <Check className="w-4 h-4" />
+              <Check className="w-4 h-4 text-[#C5A059]" />
               <span>{guest ? 'Salvar Alterações' : 'Adicionar Convidado'}</span>
             </button>
           </div>

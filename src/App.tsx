@@ -1,21 +1,128 @@
 import React, { useState, useEffect } from 'react';
-import { AppData, EventInfo, Gift, GiftCategory, Guest } from './types';
+import { AppData, EventInfo, Gift, GiftCategory, Guest, GuestAuthSession, AppRoute } from './types';
 import { initialData } from './data/initialData';
-import { HeaderNav } from './components/HeaderNav';
-import { GuestView } from './components/GuestView';
+import { HomePage } from './components/HomePage';
+import { GiftsPage } from './components/GiftsPage';
+import { LoginPage } from './components/LoginPage';
 import { AdminPanel } from './components/AdminPanel';
-import { Heart, Sparkles, Check } from 'lucide-react';
+import { Heart, Sparkles, ArrowLeft } from 'lucide-react';
+import { subscribeToAuthChanges, logoutFirebase } from './lib/firebase';
+
+const getRouteFromPath = (path: string): AppRoute => {
+  const p = path.toLowerCase();
+  if (p.includes('/presentes') || p.includes('/gifts')) return 'presentes';
+  if (p.includes('/login')) return 'login';
+  if (p.includes('/noiva') || p.includes('/admin')) return 'noiva';
+  return 'home';
+};
+
+const getPathFromRoute = (route: AppRoute): string => {
+  switch (route) {
+    case 'presentes': return '/presentes';
+    case 'login': return '/login';
+    case 'noiva': return '/noiva';
+    case 'home':
+    default: return '/';
+  }
+};
 
 export default function App() {
   const [data, setData] = useState<AppData>(initialData);
-  const [currentView, setCurrentView] = useState<'guest' | 'admin'>('guest');
   const [loading, setLoading] = useState(true);
   const [copiedLink, setCopiedLink] = useState(false);
   const [toastMessage, setToastMessage] = useState<string | null>(null);
 
+  // URL-Based Route State
+  const [currentRoute, setCurrentRoute] = useState<AppRoute>(() => {
+    return getRouteFromPath(window.location.pathname);
+  });
+
+  // Guest Authentication Session State
+  const [guestSession, setGuestSession] = useState<GuestAuthSession | null>(() => {
+    try {
+      const saved = localStorage.getItem('cha_guest_session');
+      if (saved) return JSON.parse(saved);
+      const legacyName = localStorage.getItem('cha_guest_name');
+      if (legacyName) {
+        return { name: legacyName, email: '', provider: 'email' };
+      }
+    } catch {
+      return null;
+    }
+    return null;
+  });
+
+  // Listen to browser popstate (back/forward buttons)
+  useEffect(() => {
+    const handlePopState = () => {
+      setCurrentRoute(getRouteFromPath(window.location.pathname));
+    };
+    window.addEventListener('popstate', handlePopState);
+    return () => window.removeEventListener('popstate', handlePopState);
+  }, []);
+
+  // Listen to Firebase Authentication state changes
+  useEffect(() => {
+    const unsubscribe = subscribeToAuthChanges((firebaseUser) => {
+      if (firebaseUser) {
+        const isGoogle = firebaseUser.providerData.some(p => p.providerId === 'google.com');
+        const session: GuestAuthSession = {
+          name: firebaseUser.displayName || firebaseUser.email?.split('@')[0] || 'Convidado Firebase',
+          email: firebaseUser.email || '',
+          provider: isGoogle ? 'google' : 'email'
+        };
+        setGuestSession(session);
+        try {
+          localStorage.setItem('cha_guest_session', JSON.stringify(session));
+          localStorage.setItem('cha_guest_name', session.name);
+          localStorage.setItem('cha_guest_unlocked', 'true');
+        } catch (err) {
+          console.error(err);
+        }
+      }
+    });
+    return () => unsubscribe();
+  }, []);
+
+  const navigate = (route: AppRoute) => {
+    const path = getPathFromRoute(route);
+    if (window.location.pathname !== path) {
+      window.history.pushState({}, '', path);
+    }
+    setCurrentRoute(route);
+    window.scrollTo({ top: 0, behavior: 'smooth' });
+  };
+
   const showToast = (msg: string) => {
     setToastMessage(msg);
     setTimeout(() => setToastMessage(null), 3500);
+  };
+
+  // Auth Handlers
+  const handleLoginSuccess = (name: string, email: string, provider: 'google' | 'email') => {
+    const session: GuestAuthSession = { name: name.trim(), email: email.trim(), provider };
+    setGuestSession(session);
+    try {
+      localStorage.setItem('cha_guest_session', JSON.stringify(session));
+      localStorage.setItem('cha_guest_name', session.name);
+      localStorage.setItem('cha_guest_unlocked', 'true');
+    } catch (err) {
+      console.error(err);
+    }
+    showToast(`Bem-vindo, ${session.name}!`);
+  };
+
+  const handleLogoutGuest = async () => {
+    setGuestSession(null);
+    try {
+      localStorage.removeItem('cha_guest_session');
+      localStorage.removeItem('cha_guest_name');
+      localStorage.removeItem('cha_guest_unlocked');
+      await logoutFirebase();
+    } catch (err) {
+      console.error(err);
+    }
+    showToast('Você saiu da sua conta de convidado.');
   };
 
   // Fetch data from server
@@ -165,6 +272,8 @@ export default function App() {
     showToast('Dados restaurados!');
   };
 
+  const availableGiftsCount = data.gifts.filter(g => !g.isClaimed).length;
+
   if (loading) {
     return (
       <div className="min-h-screen bg-rose-50/40 flex items-center justify-center p-4">
@@ -177,63 +286,86 @@ export default function App() {
   }
 
   return (
-    <div className="min-h-screen flex flex-col bg-rose-50/30 text-stone-800 font-sans">
+    <div className="min-h-screen bg-[#F4F1EA] text-[#2D2D2D] font-sans flex flex-col justify-between selection:bg-[#C5A059]/20 selection:text-[#2D2D2D]">
       {/* Toast Notification */}
       {toastMessage && (
-        <div className="fixed bottom-6 right-6 z-50 bg-stone-900 text-white px-5 py-3 rounded-2xl shadow-xl flex items-center space-x-2 text-xs font-semibold animate-bounce">
-          <Sparkles className="w-4 h-4 text-rose-400" />
+        <div className="fixed bottom-6 right-6 z-50 bg-[#2D2D2D] text-white px-5 py-3 rounded-2xl shadow-xl flex items-center space-x-2 text-xs font-bold animate-bounce border border-[#E5DFD5]/20">
+          <Sparkles className="w-4 h-4 text-[#C5A059]" />
           <span>{toastMessage}</span>
         </div>
       )}
 
-      {/* Top Header Navbar */}
-      <HeaderNav 
-        currentView={currentView}
-        onViewChange={setCurrentView}
-        eventInfo={data.eventInfo}
-        onCopyLink={handleCopyLink}
-        copiedLink={copiedLink}
-      />
-
-      {/* Main Content Area */}
-      <main className="flex-1 max-w-7xl w-full mx-auto px-4 sm:px-6 lg:px-8 pt-6 sm:pt-8">
-        {currentView === 'guest' ? (
-          <GuestView 
+      {/* Main Content Area based on URL Route */}
+      <main className="flex-1 w-full py-4 sm:py-8 px-2 sm:px-4">
+        {currentRoute === 'home' && (
+          <HomePage 
             eventInfo={data.eventInfo}
-            gifts={data.gifts}
             guests={data.guests}
-            onClaimGift={handleClaimGift}
-            onAddCustomGift={handleAddCustomGift}
+            guestSession={guestSession}
             onSubmitRsvp={handleSubmitRsvp}
+            onNavigate={navigate}
+            availableGiftsCount={availableGiftsCount}
           />
-        ) : (
-          <AdminPanel 
-            eventInfo={data.eventInfo}
+        )}
+
+        {currentRoute === 'presentes' && (
+          <GiftsPage 
             gifts={data.gifts}
-            guests={data.guests}
-            onUpdateEventInfo={handleUpdateEventInfo}
-            onSaveGuest={handleSaveGuest}
-            onDeleteGuest={handleDeleteGuest}
-            onSaveGift={handleSaveGift}
-            onDeleteGift={handleDeleteGift}
+            guestSession={guestSession}
+            onClaimGift={handleClaimGift}
             onUnclaimGift={handleUnclaimGift}
-            onResetData={handleResetData}
+            onAddCustomGift={handleAddCustomGift}
+            onNavigate={navigate}
           />
+        )}
+
+        {currentRoute === 'login' && (
+          <LoginPage 
+            guestSession={guestSession}
+            onLoginSuccess={handleLoginSuccess}
+            onLogoutGuest={handleLogoutGuest}
+            onNavigate={navigate}
+          />
+        )}
+
+        {currentRoute === 'noiva' && (
+          <div className="max-w-7xl mx-auto space-y-4">
+            <div className="flex items-center justify-between bg-white px-6 py-3 rounded-2xl border border-[#E5DFD5] shadow-xs">
+              <span className="font-serif italic font-bold text-lg text-[#2D2D2D]">
+                Painel da Noiva & Noivo
+              </span>
+              <button
+                onClick={() => navigate('home')}
+                className="px-3.5 py-2 text-xs font-bold bg-[#FAF9F6] border border-[#E5DFD5] hover:bg-[#F2ECE4] text-[#2D2D2D] rounded-xl transition flex items-center space-x-1.5 cursor-pointer shadow-2xs active:scale-95"
+              >
+                <ArrowLeft className="w-4 h-4 text-[#C5A059]" />
+                <span>Voltar</span>
+              </button>
+            </div>
+            <AdminPanel 
+              eventInfo={data.eventInfo}
+              gifts={data.gifts}
+              guests={data.guests}
+              onUpdateEventInfo={handleUpdateEventInfo}
+              onSaveGuest={handleSaveGuest}
+              onDeleteGuest={handleDeleteGuest}
+              onSaveGift={handleSaveGift}
+              onDeleteGift={handleDeleteGift}
+              onUnclaimGift={handleUnclaimGift}
+              onResetData={handleResetData}
+            />
+          </div>
         )}
       </main>
 
-      {/* Footer */}
-      <footer className="no-print bg-white border-t border-rose-100 py-8 mt-12">
-        <div className="max-w-7xl mx-auto px-4 text-center space-y-2">
-          <div className="flex items-center justify-center space-x-1.5 text-rose-600 font-serif font-bold text-sm">
-            <span>{data.eventInfo.brideName}</span>
-            <Heart className="w-3.5 h-3.5 fill-current" />
-            <span>{data.eventInfo.groomName}</span>
-          </div>
-          <p className="text-xs text-stone-500 font-sans">
-            Organizador de Chá de Panela • Lista de Presentes & Confirmação de Presença
-          </p>
+      {/* Footer minimal */}
+      <footer className="no-print py-6 text-center text-xs text-[#2D2D2D]/50 border-t border-[#E5DFD5]/60 bg-white/50">
+        <div className="flex items-center justify-center space-x-1 font-serif text-sm text-[#2D2D2D]">
+          <span>{data.eventInfo.brideName}</span>
+          <Heart className="w-3.5 h-3.5 text-[#C5A059] fill-current" />
+          <span>{data.eventInfo.groomName}</span>
         </div>
+        <p className="mt-1 text-[11px] font-sans text-[#2D2D2D]/60">Chá de Panela • Lista de Presentes & Confirmação de Presença</p>
       </footer>
     </div>
   );

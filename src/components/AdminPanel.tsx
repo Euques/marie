@@ -2,11 +2,14 @@ import React, { useState, useMemo } from 'react';
 import { EventInfo, Gift, GiftCategory, Guest } from '../types';
 import { GuestModal } from './GuestModal';
 import { GiftModal } from './GiftModal';
+import { CouplePhotoUploader } from './CouplePhotoUploader';
+import { firebaseConfig, testFirebaseConnection, authenticateBrideAdminWithFirebase, loginWithGoogle, saveAdminToFirestore } from '../lib/firebase';
 import { 
-  Crown, Users, Gift as GiftIcon, CheckCircle2, Clock, XCircle, 
+  Crown, Users, Gift as GiftIcon, CheckCircle2, Clock, XCircle, X,
   Plus, Edit, Trash2, Lock, Unlock, Settings, Share2, Printer, 
   RefreshCw, Search, Filter, Copy, Check, MessageSquare, Phone, 
-  Sparkles, AlertCircle, Heart, ArrowRight
+  Sparkles, AlertCircle, Heart, ArrowRight, ArrowLeft, Database, ExternalLink, Terminal,
+  ChevronDown, ChevronUp, Mail, Eye, EyeOff, Loader2, ShieldCheck
 } from 'lucide-react';
 
 interface AdminPanelProps {
@@ -48,19 +51,39 @@ export const AdminPanel: React.FC<AdminPanelProps> = ({
   const [passwordInput, setPasswordInput] = useState('');
   const [authError, setAuthError] = useState('');
 
-  // Active admin tab
-  const [activeTab, setActiveTab] = useState<'dashboard' | 'guests' | 'gifts' | 'settings' | 'invite'>('dashboard');
+  // Admin Firebase Auth & Firestore state
+  const [adminEmail, setAdminEmail] = useState('');
+  const [adminPassword, setAdminPassword] = useState('');
+  const [adminAuthMode, setAdminAuthMode] = useState<'login' | 'register'>('login');
+  const [adminLoadingAuth, setAdminLoadingAuth] = useState(false);
+  const [showAdminPassword, setShowAdminPassword] = useState(false);
+  const [useLocalPasscode, setUseLocalPasscode] = useState(false);
 
-  // Modals state
+  // Active admin tab
+  const [activeTab, setActiveTab] = useState<'dashboard' | 'guests' | 'gifts' | 'settings' | 'invite' | 'firebase'>('dashboard');
+
+  // Firebase state
+  const [firebaseStatus, setFirebaseStatus] = useState<'idle' | 'testing' | 'success' | 'error'>('idle');
+  const [firebaseMessage, setFirebaseMessage] = useState('');
+
+  // Modals & Drawers state
   const [selectedGuestForEdit, setSelectedGuestForEdit] = useState<Guest | null>(null);
   const [isGuestModalOpen, setIsGuestModalOpen] = useState(false);
 
   const [selectedGiftForEdit, setSelectedGiftForEdit] = useState<Gift | null>(null);
   const [isGiftModalOpen, setIsGiftModalOpen] = useState(false);
 
+  const [isCoupleDrawerOpen, setIsCoupleDrawerOpen] = useState(false);
+  const [isMenuAccordionOpen, setIsMenuAccordionOpen] = useState(false);
+
   // Filters
   const [guestSearch, setGuestSearch] = useState('');
   const [guestStatusFilter, setGuestStatusFilter] = useState<'all' | 'confirmed' | 'pending' | 'declined'>('all');
+  const [expandedGuestIds, setExpandedGuestIds] = useState<Record<string, boolean>>({});
+
+  const toggleGuestAccordion = (id: string) => {
+    setExpandedGuestIds(prev => ({ ...prev, [id]: !prev[id] }));
+  };
 
   const [giftSearch, setGiftSearch] = useState('');
   const [giftCategoryFilter, setGiftCategoryFilter] = useState<string>('Todas');
@@ -75,7 +98,7 @@ export const AdminPanel: React.FC<AdminPanelProps> = ({
   const [copiedInvite, setCopiedInvite] = useState(false);
   const [resetConfirming, setResetConfirming] = useState(false);
 
-  // Authenticate handler
+  // Authenticate handler (Local Passcode)
   const handleAuthSubmit = (e: React.FormEvent) => {
     e.preventDefault();
     if (passwordInput === eventInfo.adminPassword || passwordInput === '1234') {
@@ -83,6 +106,52 @@ export const AdminPanel: React.FC<AdminPanelProps> = ({
       setAuthError('');
     } else {
       setAuthError('Senha incorreta! A senha padrão é 1234.');
+    }
+  };
+
+  // Firebase Admin Auth Handlers
+  const handleAdminFirebaseAuthSubmit = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!adminEmail.trim()) {
+      setAuthError('Por favor, informe o e-mail do admin/noiva.');
+      return;
+    }
+    if (!adminPassword.trim() || adminPassword.length < 6) {
+      setAuthError('A senha do Firebase deve ter no mínimo 6 caracteres.');
+      return;
+    }
+
+    setAuthError('');
+    setAdminLoadingAuth(true);
+
+    try {
+      await authenticateBrideAdminWithFirebase(adminEmail.trim(), adminPassword.trim(), adminAuthMode);
+      setIsAuthenticated(true);
+      setAuthError('');
+    } catch (err: any) {
+      console.error('Admin Firebase Auth Error:', err);
+      setAuthError(err.message || 'Erro ao autenticar no Firebase.');
+    } finally {
+      setAdminLoadingAuth(false);
+    }
+  };
+
+  const handleAdminGoogleAuth = async () => {
+    setAuthError('');
+    setAdminLoadingAuth(true);
+    try {
+      const user = await loginWithGoogle();
+      await saveAdminToFirestore(user, 'bride_admin');
+      setIsAuthenticated(true);
+    } catch (err: any) {
+      console.error('Google Admin Auth Error:', err);
+      if (err.code === 'auth/popup-closed-by-user') {
+        setAuthError('Login com Google cancelado.');
+      } else {
+        setAuthError('Erro na autenticação do Google. Tente novamente ou use e-mail/senha.');
+      }
+    } finally {
+      setAdminLoadingAuth(false);
     }
   };
 
@@ -159,50 +228,188 @@ export const AdminPanel: React.FC<AdminPanelProps> = ({
     setTimeout(() => setCopiedInvite(false), 3000);
   };
 
-  // Lock Password Screen
+  // Lock Password Screen with Firebase Auth & Firestore
   if (!isAuthenticated) {
     return (
       <div className="min-h-[70vh] flex items-center justify-center p-4">
-        <div className="bg-white rounded-sm shadow-md max-w-md w-full p-8 border border-[#E5DFD5] space-y-6 text-center">
-          <div className="w-16 h-16 bg-[#F2ECE4] text-[#C5A059] rounded-2xs flex items-center justify-center mx-auto shadow-2xs">
+        <div className="bg-white rounded-3xl shadow-xl max-w-md w-full p-8 border border-[#E5DFD5] space-y-6 text-center">
+          <div className="w-16 h-16 bg-[#F2ECE4] text-[#C5A059] rounded-2xl flex items-center justify-center mx-auto shadow-2xs">
             <Crown className="w-8 h-8 text-[#C5A059]" />
           </div>
 
           <div className="space-y-1">
-            <h2 className="font-serif italic text-2xl font-bold text-[#2D2D2D]">Painel da Noiva</h2>
-            <p className="text-xs text-[#2D2D2D]/60 font-sans">Digite a senha para gerenciar o chá de panela</p>
+            <h2 className="text-2xl font-bold text-[#2D2D2D]">Painel da Noiva & Noivo</h2>
+            <p className="text-xs text-[#2D2D2D]/60 font-sans">
+              Autenticação de administradores via Firebase Auth & Firestore
+            </p>
           </div>
 
-          <form onSubmit={handleAuthSubmit} className="space-y-4 text-left">
-            {authError && (
-              <div className="p-3 text-xs bg-rose-50 text-rose-800 rounded-sm border border-rose-200">
-                {authError}
-              </div>
+          {authError && (
+            <div className="p-3 text-xs bg-rose-50 text-rose-800 rounded-xl border border-rose-200 text-left font-medium">
+              {authError}
+            </div>
+          )}
+
+          {/* GOOGLE AUTH BUTTON FOR BRIDE */}
+          <button
+            type="button"
+            disabled={adminLoadingAuth}
+            onClick={handleAdminGoogleAuth}
+            className="w-full py-3 px-4 bg-white hover:bg-gray-50 active:scale-98 text-[#2D2D2D] font-bold text-xs rounded-2xl border-2 border-[#E5DFD5] hover:border-[#C5A059] transition flex items-center justify-center space-x-3 shadow-xs disabled:opacity-50 cursor-pointer"
+          >
+            {adminLoadingAuth ? (
+              <Loader2 className="w-5 h-5 text-[#C5A059] animate-spin" />
+            ) : (
+              <svg className="w-5 h-5 shrink-0" viewBox="0 0 24 24">
+                <path fill="#4285F4" d="M23.745 12.27c0-.7-.06-1.4-.19-2.07H12v4.51h6.6c-.29 1.52-1.14 2.82-2.4 3.68v3.05h3.88c2.27-2.09 3.665-5.17 3.665-9.17z"/>
+                <path fill="#34A853" d="M12 24c3.24 0 5.95-1.08 7.93-2.91l-3.88-3.05c-1.08.72-2.45 1.16-4.05 1.16-3.12 0-5.77-2.11-6.72-4.96H1.28v3.15C3.25 21.3 7.31 24 12 24z"/>
+                <path fill="#FBBC05" d="M5.28 14.24c-.25-.72-.38-1.49-.38-2.24s.13-1.52.38-2.24V6.61H1.28C.46 8.23 0 10.06 0 12s.46 3.77 1.28 5.39l4-3.15z"/>
+                <path fill="#EA4335" d="M12 4.75c1.77 0 3.35.61 4.6 1.8l3.42-3.42C17.95 1.19 15.24 0 12 0 7.31 0 3.25 2.7 1.28 6.61l4 3.15c.95-2.85 3.6-4.96 6.72-4.96z"/>
+              </svg>
             )}
+            <span>Entrar com o Google (Firebase)</span>
+          </button>
+
+          <div className="relative my-4">
+            <div className="absolute inset-0 flex items-center">
+              <div className="w-full border-t border-[#E5DFD5]"></div>
+            </div>
+            <span className="relative bg-white px-3 text-[10px] font-bold text-[#2D2D2D]/50 uppercase tracking-widest">
+              ou e-mail e senha no Firebase
+            </span>
+          </div>
+
+          {/* MODE SWITCH: LOGAR VS CADASTRAR */}
+          <div className="flex bg-[#FAF9F6] p-1 rounded-2xl border border-[#E5DFD5]">
+            <button
+              type="button"
+              onClick={() => { setAdminAuthMode('login'); setAuthError(''); }}
+              className={`flex-1 py-2 text-xs font-bold rounded-xl transition ${
+                adminAuthMode === 'login' 
+                  ? 'bg-white text-[#2D2D2D] shadow-2xs border border-[#E5DFD5]' 
+                  : 'text-[#2D2D2D]/60 hover:text-[#2D2D2D]'
+              }`}
+            >
+              Logar Noiva
+            </button>
+            <button
+              type="button"
+              onClick={() => { setAdminAuthMode('register'); setAuthError(''); }}
+              className={`flex-1 py-2 text-xs font-bold rounded-xl transition ${
+                adminAuthMode === 'register' 
+                  ? 'bg-white text-[#2D2D2D] shadow-2xs border border-[#E5DFD5]' 
+                  : 'text-[#2D2D2D]/60 hover:text-[#2D2D2D]'
+              }`}
+            >
+              Cadastrar Noiva
+            </button>
+          </div>
+
+          {/* FIREBASE EMAIL/PASSWORD FORM */}
+          <form onSubmit={handleAdminFirebaseAuthSubmit} className="space-y-4 text-left">
+            <div>
+              <label className="block text-[10px] font-bold text-[#2D2D2D]/70 uppercase tracking-[0.15em] mb-1">
+                E-mail da Noiva / Admin <span className="text-[#C5A059]">*</span>
+              </label>
+              <div className="relative">
+                <Mail className="w-4 h-4 text-[#2D2D2D]/40 absolute left-3.5 top-3.5" />
+                <input 
+                  type="email"
+                  required
+                  placeholder="noiva@email.com"
+                  value={adminEmail}
+                  onChange={e => setAdminEmail(e.target.value)}
+                  className="w-full pl-10 pr-4 py-2.5 text-xs border border-[#E5DFD5] bg-[#FAF9F6] rounded-xl focus:border-[#C5A059] outline-none transition font-sans"
+                />
+              </div>
+            </div>
 
             <div>
-              <label className="block text-[10px] font-semibold text-[#2D2D2D]/70 uppercase tracking-[0.2em] mb-1">
-                Senha de Acesso
+              <label className="block text-[10px] font-bold text-[#2D2D2D]/70 uppercase tracking-[0.15em] mb-1">
+                {adminAuthMode === 'register' ? 'Crie sua Senha Firebase' : 'Senha do Firebase'} <span className="text-[#C5A059]">*</span>
               </label>
-              <input 
-                type="password"
-                required
-                placeholder="Senha (padrão: 1234)"
-                value={passwordInput}
-                onChange={e => setPasswordInput(e.target.value)}
-                className="w-full px-4 py-2.5 text-sm border border-[#E5DFD5] bg-[#FAF9F6] rounded-sm focus:border-[#C5A059] outline-none transition"
-              />
-              <p className="text-[11px] text-[#2D2D2D]/50 mt-1">Dica: A senha padrão para teste é <span className="font-mono font-bold text-[#C5A059]">1234</span></p>
+              <div className="relative">
+                <Lock className="w-4 h-4 text-[#2D2D2D]/40 absolute left-3.5 top-3.5" />
+                <input 
+                  type={showAdminPassword ? 'text' : 'password'}
+                  required
+                  minLength={6}
+                  placeholder="••••••••"
+                  value={adminPassword}
+                  onChange={e => setAdminPassword(e.target.value)}
+                  className="w-full pl-10 pr-10 py-2.5 text-xs border border-[#E5DFD5] bg-[#FAF9F6] rounded-xl focus:border-[#C5A059] outline-none transition font-sans"
+                />
+                <button
+                  type="button"
+                  onClick={() => setShowAdminPassword(!showAdminPassword)}
+                  className="absolute right-3 top-3 text-[#2D2D2D]/40 hover:text-[#2D2D2D]"
+                >
+                  {showAdminPassword ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
+                </button>
+              </div>
+              <p className="text-[10px] text-[#2D2D2D]/50 mt-1">Mínimo de 6 caracteres para autenticação no Firebase.</p>
             </div>
 
             <button
               type="submit"
-              className="w-full py-3 bg-[#2D2D2D] hover:bg-black text-white font-bold text-[10px] uppercase tracking-[0.2em] rounded-sm shadow-2xs transition flex items-center justify-center space-x-2"
+              disabled={adminLoadingAuth}
+              className="w-full py-3 bg-[#2D2D2D] hover:bg-black text-white font-bold text-[10px] uppercase tracking-[0.2em] rounded-xl shadow-xs transition active:scale-98 flex items-center justify-center space-x-2 disabled:opacity-50 cursor-pointer"
             >
-              <Unlock className="w-4 h-4 text-[#C5A059]" />
-              <span>Acessar Painel</span>
+              {adminLoadingAuth ? (
+                <Loader2 className="w-4 h-4 text-[#C5A059] animate-spin" />
+              ) : (
+                <ShieldCheck className="w-4 h-4 text-[#C5A059]" />
+              )}
+              <span>{adminLoadingAuth ? 'Processando...' : adminAuthMode === 'register' ? 'Cadastrar e Acessar Painel' : 'Logar no Firebase'}</span>
             </button>
           </form>
+
+          {/* ACCORDION / TOGGLE FOR LOCAL PASSCODE FALLBACK */}
+          <div className="pt-3 border-t border-[#E5DFD5] text-left">
+            <button
+              type="button"
+              onClick={() => setUseLocalPasscode(!useLocalPasscode)}
+              className="text-[11px] font-bold text-[#C5A059] hover:underline flex items-center justify-between w-full cursor-pointer"
+            >
+              <span>Usar Senha Padrão Local (1234)</span>
+              {useLocalPasscode ? <ChevronUp className="w-3.5 h-3.5" /> : <ChevronDown className="w-3.5 h-3.5" />}
+            </button>
+
+            {useLocalPasscode && (
+              <form onSubmit={handleAuthSubmit} className="mt-3 space-y-3 pt-2 border-t border-dashed border-[#E5DFD5]">
+                <input 
+                  type="password"
+                  placeholder="Senha Local (padrão: 1234)"
+                  value={passwordInput}
+                  onChange={e => setPasswordInput(e.target.value)}
+                  className="w-full px-4 py-2 text-xs border border-[#E5DFD5] bg-[#FAF9F6] rounded-xl outline-none font-sans"
+                />
+                <button
+                  type="submit"
+                  className="w-full py-2 bg-[#F2ECE4] hover:bg-[#E5DFD5] text-[#2D2D2D] font-bold text-[10px] uppercase tracking-wider rounded-xl transition flex items-center justify-center space-x-1.5 cursor-pointer"
+                >
+                  <Unlock className="w-3.5 h-3.5 text-[#C5A059]" />
+                  <span>Entrar com Senha Local</span>
+                </button>
+              </form>
+            )}
+          </div>
+
+          <div className="pt-2">
+            <a
+              href="/"
+              onClick={(e) => {
+                e.preventDefault();
+                window.location.hash = '';
+                window.history.pushState({}, '', '/');
+                window.dispatchEvent(new Event('popstate'));
+              }}
+              className="w-full py-2.5 px-3 bg-[#FAF9F6] hover:bg-[#F2ECE4] text-[#2D2D2D] text-xs font-bold uppercase tracking-wider rounded-xl border border-[#E5DFD5] transition flex items-center justify-center space-x-2 cursor-pointer"
+            >
+              <ArrowLeft className="w-3.5 h-3.5 text-[#C5A059]" />
+              <span>Voltar para o Site</span>
+            </a>
+          </div>
         </div>
       </div>
     );
@@ -211,165 +418,249 @@ export const AdminPanel: React.FC<AdminPanelProps> = ({
   return (
     <div className="space-y-8 pb-16">
       {/* Top Admin Status Banner */}
-      <div className="no-print bg-[#2D2D2D] text-white p-4 sm:p-5 rounded-sm shadow-sm flex flex-col sm:flex-row items-center justify-between gap-4">
+      <div className="no-print bg-[#2D2D2D] text-white p-5 rounded-3xl shadow-sm flex flex-col sm:flex-row items-center justify-between gap-4">
         <div className="flex items-center space-x-3">
-          <div className="p-2 bg-[#F2ECE4]/10 text-[#C5A059] rounded-2xs">
+          <div className="p-3 bg-[#F2ECE4]/10 text-[#C5A059] rounded-2xl shadow-2xs">
             <Crown className="w-5 h-5" />
           </div>
           <div>
-            <h2 className="font-serif italic text-sm sm:text-base">Painel Administrativo da Noiva</h2>
-            <p className="text-xs text-[#E5DFD5]/70 font-sans">Gerenciando {eventInfo.eventTitle || 'Chá de Panela'}</p>
+            <h2 className="text-base sm:text-lg font-bold">Painel Administrativo da Noiva</h2>
+            <p className="text-xs text-[#E5DFD5]/70 font-sans">
+              Noivos: <span className="text-[#C5A059] font-semibold">{eventInfo.brideName || 'Noiva'} & {eventInfo.groomName || 'Noivo'}</span>
+            </p>
           </div>
         </div>
 
-        <div className="flex items-center space-x-2">
+        <div className="flex flex-wrap items-center gap-2">
+          <button
+            onClick={() => setIsCoupleDrawerOpen(true)}
+            className="px-4 py-2 bg-[#C5A059] hover:bg-[#B38F48] text-white text-[10px] font-bold uppercase tracking-widest rounded-xl transition-all flex items-center space-x-1.5 active:scale-95 shadow-xs"
+          >
+            <Heart className="w-3.5 h-3.5 fill-current" />
+            <span>Painel dos Noivos</span>
+          </button>
+
           <button
             onClick={() => window.print()}
-            className="px-3 py-1.5 bg-[#FAF9F6]/10 hover:bg-[#FAF9F6]/20 text-white text-[10px] font-bold uppercase tracking-widest rounded-sm transition flex items-center space-x-1.5"
+            className="px-4 py-2 bg-[#FAF9F6]/10 hover:bg-[#FAF9F6]/20 text-white text-[10px] font-bold uppercase tracking-widest rounded-xl transition-all flex items-center space-x-1.5 active:scale-95"
           >
             <Printer className="w-3.5 h-3.5 text-[#C5A059]" />
-            <span className="hidden sm:inline">Imprimir Relatório</span>
+            <span className="hidden sm:inline">Imprimir</span>
           </button>
+
           <button
             onClick={() => setIsAuthenticated(false)}
-            className="px-3 py-1.5 bg-rose-950/80 hover:bg-rose-900 text-rose-200 text-[10px] font-bold uppercase tracking-widest rounded-sm transition flex items-center space-x-1.5"
+            className="px-4 py-2 bg-rose-950/80 hover:bg-rose-900 text-rose-200 text-[10px] font-bold uppercase tracking-widest rounded-xl transition-all flex items-center space-x-1.5 active:scale-95"
           >
             <Lock className="w-3.5 h-3.5" />
-            <span>Bloquear</span>
+            <span>Sair</span>
           </button>
         </div>
       </div>
 
-      {/* Navigation Tabs */}
-      <div className="no-print flex items-center space-x-2 overflow-x-auto pb-2 border-b border-[#E5DFD5] scrollbar-none">
+      {/* MENU DA NOIVA - ACCORDION BAR */}
+      <div className="no-print bg-white border border-[#E5DFD5] rounded-2xl shadow-2xs overflow-hidden transition-all">
+        {/* Accordion Toggle Header */}
         <button
-          onClick={() => setActiveTab('dashboard')}
-          className={`px-4 py-2 text-[10px] uppercase tracking-wider font-bold rounded-2xs whitespace-nowrap transition flex items-center space-x-2 ${
-            activeTab === 'dashboard'
-              ? 'bg-[#2D2D2D] text-white shadow-2xs'
-              : 'bg-[#FAF9F6] text-[#2D2D2D]/70 hover:bg-[#F2ECE4] border border-[#E5DFD5]'
-          }`}
+          type="button"
+          onClick={() => setIsMenuAccordionOpen(!isMenuAccordionOpen)}
+          className="w-full px-4 py-3 bg-[#FAF9F6] hover:bg-[#F2ECE4] flex items-center justify-between text-left transition cursor-pointer"
         >
-          <Crown className="w-4 h-4 text-[#C5A059]" />
-          <span>Visão Consolidada</span>
+          <div className="flex items-center space-x-2.5 min-w-0">
+            <div className="p-2 bg-[#2D2D2D] text-[#C5A059] rounded-xl shrink-0 shadow-2xs">
+              <Crown className="w-4 h-4" />
+            </div>
+            <div className="min-w-0">
+              <span className="text-[10px] font-bold uppercase tracking-wider text-[#C5A059] block">
+                Menu de Navegação
+              </span>
+              <h3 className="text-xs sm:text-sm font-bold text-[#2D2D2D] truncate flex items-center space-x-1.5">
+                <span className="text-[#2D2D2D]/60">Aba:</span>
+                <span className="text-[#C5A059] font-bold">
+                  {activeTab === 'dashboard' && 'Visão Consolidada'}
+                  {activeTab === 'settings' && 'Dados dos Noivos'}
+                  {activeTab === 'guests' && `Convidados (${guests.length})`}
+                  {activeTab === 'gifts' && `Presentes (${claimedGifts.length}/${gifts.length})`}
+                  {activeTab === 'invite' && 'Enviar Convites'}
+                  {activeTab === 'firebase' && 'Firebase DB'}
+                </span>
+              </h3>
+            </div>
+          </div>
+
+          <div className="flex items-center space-x-1.5 shrink-0 ml-2">
+            <span className="text-[10px] font-bold text-[#C5A059] uppercase tracking-wider hidden sm:inline">
+              {isMenuAccordionOpen ? 'Recolher Menu' : 'Alternar Aba'}
+            </span>
+            <div className="w-8 h-8 rounded-full bg-white border border-[#E5DFD5] flex items-center justify-center text-[#C5A059] shadow-2xs">
+              {isMenuAccordionOpen ? <ChevronUp className="w-4 h-4" /> : <ChevronDown className="w-4 h-4" />}
+            </div>
+          </div>
         </button>
 
-        <button
-          onClick={() => setActiveTab('guests')}
-          className={`px-4 py-2 text-[10px] uppercase tracking-wider font-bold rounded-2xs whitespace-nowrap transition flex items-center space-x-2 ${
-            activeTab === 'guests'
-              ? 'bg-[#2D2D2D] text-white shadow-2xs'
-              : 'bg-[#FAF9F6] text-[#2D2D2D]/70 hover:bg-[#F2ECE4] border border-[#E5DFD5]'
-          }`}
-        >
-          <Users className="w-4 h-4 text-[#C5A059]" />
-          <span>Convidados ({guests.length})</span>
-        </button>
+        {/* Accordion Expanded Menu Body (Grid on Mobile, Flex on Desktop) */}
+        <div className={`p-3 bg-white border-t border-[#E5DFD5] transition-all ${isMenuAccordionOpen ? 'block' : 'hidden sm:block'}`}>
+          <div className="grid grid-cols-2 sm:flex sm:flex-wrap items-center gap-2">
+            <button
+              onClick={() => {
+                setActiveTab('dashboard');
+                setIsMenuAccordionOpen(false);
+              }}
+              className={`p-2.5 sm:px-3.5 sm:py-2 text-[10px] uppercase tracking-wider font-bold rounded-xl transition-all flex items-center space-x-1.5 active:scale-95 ${
+                activeTab === 'dashboard'
+                  ? 'bg-[#2D2D2D] text-white shadow-2xs border border-[#2D2D2D]'
+                  : 'bg-[#FAF9F6] text-[#2D2D2D]/80 hover:bg-[#F2ECE4] border border-[#E5DFD5]'
+              }`}
+            >
+              <Crown className="w-3.5 h-3.5 text-[#C5A059] shrink-0" />
+              <span className="truncate">Visão Geral</span>
+            </button>
 
-        <button
-          onClick={() => setActiveTab('gifts')}
-          className={`px-4 py-2 text-[10px] uppercase tracking-wider font-bold rounded-2xs whitespace-nowrap transition flex items-center space-x-2 ${
-            activeTab === 'gifts'
-              ? 'bg-[#2D2D2D] text-white shadow-2xs'
-              : 'bg-[#FAF9F6] text-[#2D2D2D]/70 hover:bg-[#F2ECE4] border border-[#E5DFD5]'
-          }`}
-        >
-          <GiftIcon className="w-4 h-4 text-[#C5A059]" />
-          <span>Presentes ({claimedGifts.length}/{gifts.length})</span>
-        </button>
+            <button
+              onClick={() => {
+                setActiveTab('settings');
+                setIsMenuAccordionOpen(false);
+              }}
+              className={`p-2.5 sm:px-3.5 sm:py-2 text-[10px] uppercase tracking-wider font-bold rounded-xl transition-all flex items-center space-x-1.5 active:scale-95 ${
+                activeTab === 'settings'
+                  ? 'bg-[#2D2D2D] text-white shadow-2xs border border-[#2D2D2D]'
+                  : 'bg-[#FAF9F6] text-[#2D2D2D]/80 hover:bg-[#F2ECE4] border border-[#E5DFD5]'
+              }`}
+            >
+              <Heart className="w-3.5 h-3.5 text-[#C5A059] fill-current shrink-0" />
+              <span className="truncate">Dados dos Noivos</span>
+            </button>
 
-        <button
-          onClick={() => setActiveTab('invite')}
-          className={`px-4 py-2 text-[10px] uppercase tracking-wider font-bold rounded-2xs whitespace-nowrap transition flex items-center space-x-2 ${
-            activeTab === 'invite'
-              ? 'bg-[#2D2D2D] text-white shadow-2xs'
-              : 'bg-[#FAF9F6] text-[#2D2D2D]/70 hover:bg-[#F2ECE4] border border-[#E5DFD5]'
-          }`}
-        >
-          <Share2 className="w-4 h-4 text-[#C5A059]" />
-          <span>Enviar Convites</span>
-        </button>
+            <button
+              onClick={() => {
+                setActiveTab('guests');
+                setIsMenuAccordionOpen(false);
+              }}
+              className={`p-2.5 sm:px-3.5 sm:py-2 text-[10px] uppercase tracking-wider font-bold rounded-xl transition-all flex items-center space-x-1.5 active:scale-95 ${
+                activeTab === 'guests'
+                  ? 'bg-[#2D2D2D] text-white shadow-2xs border border-[#2D2D2D]'
+                  : 'bg-[#FAF9F6] text-[#2D2D2D]/80 hover:bg-[#F2ECE4] border border-[#E5DFD5]'
+              }`}
+            >
+              <Users className="w-3.5 h-3.5 text-[#C5A059] shrink-0" />
+              <span className="truncate">Convidados ({guests.length})</span>
+            </button>
 
-        <button
-          onClick={() => setActiveTab('settings')}
-          className={`px-4 py-2 text-[10px] uppercase tracking-wider font-bold rounded-2xs whitespace-nowrap transition flex items-center space-x-2 ${
-            activeTab === 'settings'
-              ? 'bg-[#2D2D2D] text-white shadow-2xs'
-              : 'bg-[#FAF9F6] text-[#2D2D2D]/70 hover:bg-[#F2ECE4] border border-[#E5DFD5]'
-          }`}
-        >
-          <Settings className="w-4 h-4 text-[#C5A059]" />
-          <span>Configurações</span>
-        </button>
+            <button
+              onClick={() => {
+                setActiveTab('gifts');
+                setIsMenuAccordionOpen(false);
+              }}
+              className={`p-2.5 sm:px-3.5 sm:py-2 text-[10px] uppercase tracking-wider font-bold rounded-xl transition-all flex items-center space-x-1.5 active:scale-95 ${
+                activeTab === 'gifts'
+                  ? 'bg-[#2D2D2D] text-white shadow-2xs border border-[#2D2D2D]'
+                  : 'bg-[#FAF9F6] text-[#2D2D2D]/80 hover:bg-[#F2ECE4] border border-[#E5DFD5]'
+              }`}
+            >
+              <GiftIcon className="w-3.5 h-3.5 text-[#C5A059] shrink-0" />
+              <span className="truncate">Presentes ({claimedGifts.length}/{gifts.length})</span>
+            </button>
+
+            <button
+              onClick={() => {
+                setActiveTab('invite');
+                setIsMenuAccordionOpen(false);
+              }}
+              className={`p-2.5 sm:px-3.5 sm:py-2 text-[10px] uppercase tracking-wider font-bold rounded-xl transition-all flex items-center space-x-1.5 active:scale-95 ${
+                activeTab === 'invite'
+                  ? 'bg-[#2D2D2D] text-white shadow-2xs border border-[#2D2D2D]'
+                  : 'bg-[#FAF9F6] text-[#2D2D2D]/80 hover:bg-[#F2ECE4] border border-[#E5DFD5]'
+              }`}
+            >
+              <Share2 className="w-3.5 h-3.5 text-[#C5A059] shrink-0" />
+              <span className="truncate">Convites WhatsApp</span>
+            </button>
+
+            <button
+              onClick={() => {
+                setActiveTab('firebase');
+                setIsMenuAccordionOpen(false);
+              }}
+              className={`p-2.5 sm:px-3.5 sm:py-2 text-[10px] uppercase tracking-wider font-bold rounded-xl transition-all flex items-center space-x-1.5 active:scale-95 ${
+                activeTab === 'firebase'
+                  ? 'bg-[#2D2D2D] text-white shadow-2xs border border-[#2D2D2D]'
+                  : 'bg-[#FAF9F6] text-[#2D2D2D]/80 hover:bg-[#F2ECE4] border border-[#E5DFD5]'
+              }`}
+            >
+              <Database className="w-3.5 h-3.5 text-[#FFCA28] shrink-0" />
+              <span className="truncate">Firebase DB</span>
+            </button>
+          </div>
+        </div>
       </div>
 
       {/* TAB 1: DASHBOARD / VISÃO CONSOLIDADA */}
       {activeTab === 'dashboard' && (
         <div className="space-y-8">
-          {/* Metrics Grid */}
+          {/* Metrics Grid - App Cards */}
           <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-5">
             {/* Total Confirmed People */}
-            <div className="bg-white p-5 rounded-2xl border border-emerald-100 shadow-xs space-y-2">
+            <div className="bg-white p-6 rounded-3xl border border-[#E5DFD5] shadow-xs space-y-3 hover:border-emerald-300 transition-all">
               <div className="flex items-center justify-between">
-                <span className="text-xs font-semibold uppercase tracking-wider text-stone-500">Pessoas Confirmadas</span>
-                <div className="p-2 bg-emerald-100 text-emerald-700 rounded-xl">
+                <span className="text-[10px] font-bold uppercase tracking-[0.2em] text-[#2D2D2D]/60">Pessoas Confirmadas</span>
+                <div className="p-2.5 bg-emerald-100/80 text-emerald-800 rounded-2xl shadow-2xs">
                   <CheckCircle2 className="w-5 h-5" />
                 </div>
               </div>
               <div className="flex items-baseline space-x-2">
-                <span className="text-3xl font-bold font-serif text-stone-800">{totalConfirmedPeople}</span>
-                <span className="text-xs text-stone-500">
-                  ({confirmedGuests.length} convidados + {totalCompanionsConfirmed} acompanhantes)
+                <span className="text-4xl font-bold font-serif text-[#2D2D2D]">{totalConfirmedPeople}</span>
+                <span className="text-xs text-[#2D2D2D]/60">
+                  ({confirmedGuests.length} convidados + {totalCompanionsConfirmed} acomp.)
                 </span>
               </div>
             </div>
 
             {/* Pending RSVPs */}
-            <div className="bg-white p-5 rounded-2xl border border-amber-100 shadow-xs space-y-2">
+            <div className="bg-white p-6 rounded-3xl border border-[#E5DFD5] shadow-xs space-y-3 hover:border-amber-300 transition-all">
               <div className="flex items-center justify-between">
-                <span className="text-xs font-semibold uppercase tracking-wider text-stone-500">Presenças Pendentes</span>
-                <div className="p-2 bg-amber-100 text-amber-700 rounded-xl">
+                <span className="text-[10px] font-bold uppercase tracking-[0.2em] text-[#2D2D2D]/60">Presenças Pendentes</span>
+                <div className="p-2.5 bg-amber-100/80 text-amber-800 rounded-2xl shadow-2xs">
                   <Clock className="w-5 h-5" />
                 </div>
               </div>
               <div className="flex items-baseline space-x-2">
-                <span className="text-3xl font-bold font-serif text-stone-800">{pendingGuests.length}</span>
-                <span className="text-xs text-stone-500">aguardando resposta</span>
+                <span className="text-4xl font-bold font-serif text-[#2D2D2D]">{pendingGuests.length}</span>
+                <span className="text-xs text-[#2D2D2D]/60">aguardando resposta</span>
               </div>
             </div>
 
             {/* Gifts Claimed */}
-            <div className="bg-white p-5 rounded-2xl border border-rose-100 shadow-xs space-y-2">
+            <div className="bg-white p-6 rounded-3xl border border-[#E5DFD5] shadow-xs space-y-3 hover:border-[#C5A059] transition-all">
               <div className="flex items-center justify-between">
-                <span className="text-xs font-semibold uppercase tracking-wider text-stone-500">Presentes Reservados</span>
-                <div className="p-2 bg-rose-100 text-rose-700 rounded-xl">
+                <span className="text-[10px] font-bold uppercase tracking-[0.2em] text-[#2D2D2D]/60">Presentes Reservados</span>
+                <div className="p-2.5 bg-[#F2ECE4] text-[#C5A059] rounded-2xl shadow-2xs">
                   <GiftIcon className="w-5 h-5" />
                 </div>
               </div>
               <div className="flex items-baseline space-x-2">
-                <span className="text-3xl font-bold font-serif text-stone-800">{claimedGifts.length}</span>
-                <span className="text-xs text-stone-500">de {gifts.length} ({claimedPercent}%)</span>
+                <span className="text-4xl font-bold font-serif text-[#2D2D2D]">{claimedGifts.length}</span>
+                <span className="text-xs text-[#2D2D2D]/60">de {gifts.length} ({claimedPercent}%)</span>
               </div>
               {/* Progress bar */}
-              <div className="w-full bg-stone-100 h-2 rounded-full overflow-hidden">
+              <div className="w-full bg-[#F2ECE4] h-2 rounded-full overflow-hidden">
                 <div 
-                  className="bg-rose-500 h-full rounded-full transition-all duration-500" 
+                  className="bg-[#C5A059] h-full rounded-full transition-all duration-500" 
                   style={{ width: `${claimedPercent}%` }}
                 ></div>
               </div>
             </div>
 
             {/* Declined */}
-            <div className="bg-white p-5 rounded-2xl border border-stone-200 shadow-xs space-y-2">
+            <div className="bg-white p-6 rounded-3xl border border-[#E5DFD5] shadow-xs space-y-3 hover:border-stone-400 transition-all">
               <div className="flex items-center justify-between">
-                <span className="text-xs font-semibold uppercase tracking-wider text-stone-500">Não Poderão Ir</span>
-                <div className="p-2 bg-stone-100 text-stone-600 rounded-xl">
+                <span className="text-[10px] font-bold uppercase tracking-[0.2em] text-[#2D2D2D]/60">Não Poderão Ir</span>
+                <div className="p-2.5 bg-[#FAF9F6] text-[#2D2D2D]/60 rounded-2xl border border-[#E5DFD5] shadow-2xs">
                   <XCircle className="w-5 h-5" />
                 </div>
               </div>
               <div className="flex items-baseline space-x-2">
-                <span className="text-3xl font-bold font-serif text-stone-800">{declinedGuests.length}</span>
-                <span className="text-xs text-stone-500">recusas enviadas</span>
+                <span className="text-4xl font-bold font-serif text-[#2D2D2D]">{declinedGuests.length}</span>
+                <span className="text-xs text-[#2D2D2D]/60">recusas enviadas</span>
               </div>
             </div>
           </div>
@@ -377,8 +668,8 @@ export const AdminPanel: React.FC<AdminPanelProps> = ({
           {/* Category Progress Breakdown & Guest Messages */}
           <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
             {/* Gifts by Category */}
-            <div className="bg-white p-6 rounded-3xl border border-rose-100 shadow-xs space-y-4">
-              <h3 className="font-serif font-bold text-stone-800 text-base">Progresso dos Presentes por Categoria</h3>
+            <div className="bg-white p-6 rounded-3xl border border-[#E5DFD5] shadow-xs space-y-4">
+              <h3 className="font-serif italic font-bold text-[#2D2D2D] text-lg">Progresso dos Presentes por Categoria</h3>
               <div className="space-y-3">
                 {CATEGORIES.map(cat => {
                   const catGifts = gifts.filter(g => g.category === cat);
@@ -387,14 +678,14 @@ export const AdminPanel: React.FC<AdminPanelProps> = ({
                   const pct = Math.round((catClaimed / catGifts.length) * 100);
 
                   return (
-                    <div key={cat} className="space-y-1">
-                      <div className="flex justify-between text-xs font-semibold text-stone-700">
+                    <div key={cat} className="space-y-1.5">
+                      <div className="flex justify-between text-xs font-semibold text-[#2D2D2D]">
                         <span>{cat}</span>
-                        <span>{catClaimed} / {catGifts.length} ({pct}%)</span>
+                        <span className="text-[#C5A059] font-serif font-bold">{catClaimed} / {catGifts.length} ({pct}%)</span>
                       </div>
-                      <div className="w-full bg-stone-100 h-2 rounded-full overflow-hidden">
+                      <div className="w-full bg-[#F2ECE4] h-2 rounded-full overflow-hidden">
                         <div 
-                          className="bg-rose-500 h-full rounded-full transition-all"
+                          className="bg-[#C5A059] h-full rounded-full transition-all duration-300"
                           style={{ width: `${pct}%` }}
                         ></div>
                       </div>
@@ -405,21 +696,21 @@ export const AdminPanel: React.FC<AdminPanelProps> = ({
             </div>
 
             {/* Recent Messages from Guests */}
-            <div className="bg-white p-6 rounded-3xl border border-rose-100 shadow-xs space-y-4">
-              <h3 className="font-serif font-bold text-stone-800 text-base">Recadinhos dos Convidados</h3>
+            <div className="bg-white p-6 rounded-3xl border border-[#E5DFD5] shadow-xs space-y-4">
+              <h3 className="font-serif italic font-bold text-[#2D2D2D] text-lg">Recadinhos dos Convidados</h3>
               <div className="space-y-3 max-h-72 overflow-y-auto pr-1">
                 {guests.filter(g => g.message).length === 0 ? (
-                  <p className="text-xs text-stone-400 italic">Nenhuma mensagem deixada ainda.</p>
+                  <p className="text-xs text-[#2D2D2D]/50 italic">Nenhuma mensagem deixada ainda.</p>
                 ) : (
                   guests.filter(g => g.message).map(g => (
-                    <div key={g.id} className="bg-rose-50/50 p-3.5 rounded-2xl border border-rose-100 space-y-1">
+                    <div key={g.id} className="bg-[#FAF9F6] p-4 rounded-2xl border border-[#E5DFD5] space-y-1">
                       <div className="flex justify-between items-center text-xs">
-                        <span className="font-bold text-stone-800">{g.name}</span>
-                        <span className="text-[10px] text-stone-400">
+                        <span className="font-bold text-[#2D2D2D]">{g.name}</span>
+                        <span className="text-[10px] text-[#2D2D2D]/40">
                           {new Date(g.updatedAt).toLocaleDateString('pt-BR')}
                         </span>
                       </div>
-                      <p className="text-xs text-stone-600 italic">"{g.message}"</p>
+                      <p className="text-xs text-[#2D2D2D]/80 italic">"{g.message}"</p>
                     </div>
                   ))
                 )}
@@ -434,8 +725,8 @@ export const AdminPanel: React.FC<AdminPanelProps> = ({
         <div className="space-y-6">
           <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
             <div>
-              <h2 className="font-serif text-2xl font-bold text-stone-800">Gerenciamento de Convidados</h2>
-              <p className="text-xs text-stone-500">Acompanhe as confirmações de presença e acompanhantes</p>
+              <h2 className="font-serif text-2xl font-bold text-[#2D2D2D]">Gerenciamento de Convidados</h2>
+              <p className="text-xs text-[#2D2D2D]/60 font-sans">Acompanhe as confirmações de presença e acompanhantes</p>
             </div>
 
             <button
@@ -443,30 +734,30 @@ export const AdminPanel: React.FC<AdminPanelProps> = ({
                 setSelectedGuestForEdit(null);
                 setIsGuestModalOpen(true);
               }}
-              className="px-4 py-2.5 bg-rose-600 hover:bg-rose-700 text-white font-semibold text-xs rounded-xl shadow-xs transition flex items-center space-x-2 self-start sm:self-auto"
+              className="px-5 py-3 bg-[#2D2D2D] hover:bg-black active:scale-95 text-white font-bold text-[10px] uppercase tracking-[0.2em] rounded-2xl shadow-xs transition-all flex items-center space-x-2 self-start sm:self-auto"
             >
-              <Plus className="w-4 h-4" />
+              <Plus className="w-4 h-4 text-[#C5A059]" />
               <span>Adicionar Convidado</span>
             </button>
           </div>
 
           {/* Search & Filter bar */}
-          <div className="bg-white p-4 rounded-2xl border border-rose-100 flex flex-col sm:flex-row gap-3">
+          <div className="bg-white p-5 rounded-3xl border border-[#E5DFD5] shadow-xs flex flex-col sm:flex-row gap-3">
             <div className="relative flex-1">
-              <Search className="w-4 h-4 text-stone-400 absolute left-3.5 top-3" />
+              <Search className="w-4 h-4 text-[#2D2D2D]/40 absolute left-4 top-3.5" />
               <input 
                 type="text"
                 placeholder="Buscar convidado por nome, telefone ou e-mail..."
                 value={guestSearch}
                 onChange={e => setGuestSearch(e.target.value)}
-                className="w-full pl-10 pr-3 py-2 text-sm border border-stone-200 rounded-xl focus:ring-2 focus:ring-rose-400 outline-none transition"
+                className="w-full pl-11 pr-4 py-2.5 text-sm border border-[#E5DFD5] bg-[#FAF9F6] rounded-2xl focus:border-[#C5A059] outline-none transition"
               />
             </div>
 
             <select
               value={guestStatusFilter}
               onChange={e => setGuestStatusFilter(e.target.value as any)}
-              className="px-3 py-2 text-xs font-semibold border border-stone-200 rounded-xl focus:ring-2 focus:ring-rose-400 outline-none transition bg-white text-stone-700"
+              className="px-4 py-2.5 text-xs font-semibold border border-[#E5DFD5] rounded-2xl focus:border-[#C5A059] outline-none transition bg-[#FAF9F6] text-[#2D2D2D]"
             >
               <option value="all">Todos os Status</option>
               <option value="confirmed">🟢 Confirmados</option>
@@ -475,94 +766,168 @@ export const AdminPanel: React.FC<AdminPanelProps> = ({
             </select>
           </div>
 
-          {/* Guests Table */}
-          <div className="bg-white rounded-3xl border border-rose-100 shadow-xs overflow-hidden">
-            <div className="overflow-x-auto">
-              <table className="w-full text-left text-xs">
-                <thead className="bg-rose-50/70 text-stone-700 font-semibold uppercase tracking-wider border-b border-rose-100">
-                  <tr>
-                    <th className="p-4">Nome</th>
-                    <th className="p-4">Status</th>
-                    <th className="p-4">Acompanhantes</th>
-                    <th className="p-4">Contato</th>
-                    <th className="p-4">Mensagem</th>
-                    <th className="p-4 text-right">Ações</th>
-                  </tr>
-                </thead>
-                <tbody className="divide-y divide-stone-100 text-stone-700">
-                  {filteredGuests.length === 0 ? (
-                    <tr>
-                      <td colSpan={6} className="p-8 text-center text-stone-400">
-                        Nenhum convidado encontrado.
-                      </td>
-                    </tr>
-                  ) : (
-                    filteredGuests.map(guest => (
-                      <tr key={guest.id} className="hover:bg-rose-50/30 transition">
-                        <td className="p-4 font-semibold text-stone-800">
-                          {guest.name}
-                        </td>
-                        <td className="p-4">
-                          {guest.status === 'confirmed' && (
-                            <span className="inline-flex items-center space-x-1 px-2.5 py-0.5 rounded-full text-[10px] font-semibold bg-emerald-100 text-emerald-800">
-                              <CheckCircle2 className="w-3 h-3" />
-                              <span>Confirmado</span>
-                            </span>
+          {/* Guests List as Compact Accordions */}
+          <div className="space-y-3">
+            {filteredGuests.length === 0 ? (
+              <div className="bg-white p-8 rounded-3xl border border-[#E5DFD5] text-center text-[#2D2D2D]/50 italic">
+                Nenhum convidado encontrado.
+              </div>
+            ) : (
+              filteredGuests.map(guest => {
+                const isExpanded = expandedGuestIds[guest.id] ?? false;
+
+                return (
+                  <div 
+                    key={guest.id}
+                    className={`bg-white border rounded-2xl overflow-hidden transition-all shadow-2xs ${
+                      isExpanded ? 'border-[#C5A059] ring-1 ring-[#C5A059]/30' : 'border-[#E5DFD5] hover:border-[#C5A059]/60'
+                    }`}
+                  >
+                    {/* ACCORDION HEADER */}
+                    <button
+                      type="button"
+                      onClick={() => toggleGuestAccordion(guest.id)}
+                      className="w-full p-4 flex flex-wrap sm:flex-nowrap items-center justify-between text-left hover:bg-[#FAF9F6] transition cursor-pointer gap-2"
+                    >
+                      <div className="flex items-center space-x-3 flex-1 min-w-0">
+                        <div className="w-10 h-10 rounded-xl bg-[#FAF9F6] border border-[#E5DFD5] flex items-center justify-center font-bold text-sm text-[#2D2D2D] shrink-0 shadow-2xs">
+                          {guest.name.charAt(0).toUpperCase()}
+                        </div>
+
+                        <div className="space-y-1 min-w-0 flex-1">
+                          <div className="flex items-center space-x-2 flex-wrap gap-y-1">
+                            <h4 className="font-bold text-base text-[#2D2D2D] truncate">
+                              {guest.name}
+                            </h4>
+
+                            {/* Status Badge */}
+                            {guest.status === 'confirmed' && (
+                              <span className="inline-flex items-center space-x-1 px-2.5 py-0.5 rounded-full text-[10px] font-bold uppercase tracking-wider bg-emerald-50 text-emerald-800 border border-emerald-200">
+                                <CheckCircle2 className="w-3 h-3 text-emerald-600" />
+                                <span>Confirmado</span>
+                              </span>
+                            )}
+                            {guest.status === 'pending' && (
+                              <span className="inline-flex items-center space-x-1 px-2.5 py-0.5 rounded-full text-[10px] font-bold uppercase tracking-wider bg-amber-50 text-amber-800 border border-amber-200">
+                                <Clock className="w-3 h-3 text-amber-600" />
+                                <span>Pendente</span>
+                              </span>
+                            )}
+                            {guest.status === 'declined' && (
+                              <span className="inline-flex items-center space-x-1 px-2.5 py-0.5 rounded-full text-[10px] font-bold uppercase tracking-wider bg-stone-100 text-stone-700 border border-stone-200">
+                                <XCircle className="w-3 h-3 text-stone-500" />
+                                <span>Recusado</span>
+                              </span>
+                            )}
+
+                            {/* Companions Badge */}
+                            {guest.companions > 0 && (
+                              <span className="px-2.5 py-0.5 rounded-full text-[10px] font-bold bg-[#F2ECE4] text-[#2D2D2D]/80 border border-[#E5DFD5]">
+                                +{guest.companions} acomp.
+                              </span>
+                            )}
+                          </div>
+
+                          {(guest.phone || guest.email) && (
+                            <p className="text-xs text-[#2D2D2D]/60 font-mono truncate">
+                              {guest.phone || guest.email}
+                            </p>
                           )}
-                          {guest.status === 'pending' && (
-                            <span className="inline-flex items-center space-x-1 px-2.5 py-0.5 rounded-full text-[10px] font-semibold bg-amber-100 text-amber-800">
-                              <Clock className="w-3 h-3" />
-                              <span>Pendente</span>
-                            </span>
-                          )}
-                          {guest.status === 'declined' && (
-                            <span className="inline-flex items-center space-x-1 px-2.5 py-0.5 rounded-full text-[10px] font-semibold bg-stone-200 text-stone-700">
-                              <XCircle className="w-3 h-3" />
-                              <span>Recusado</span>
-                            </span>
-                          )}
-                        </td>
-                        <td className="p-4 font-medium">
-                          {guest.companions > 0 ? `+ ${guest.companions}` : 'Sem acompanhante'}
-                        </td>
-                        <td className="p-4 text-stone-500">
-                          {guest.phone || guest.email || '-'}
-                        </td>
-                        <td className="p-4 max-w-xs truncate text-stone-500 italic">
-                          {guest.message || '-'}
-                        </td>
-                        <td className="p-4 text-right space-x-1">
+                        </div>
+                      </div>
+
+                      <div className="flex items-center space-x-2 shrink-0">
+                        <span className="text-[10px] font-bold uppercase tracking-wider text-[#C5A059] hidden sm:inline">
+                          {isExpanded ? 'Ocultar' : 'Ver Detalhes'}
+                        </span>
+                        <div className="w-8 h-8 rounded-full bg-[#FAF9F6] border border-[#E5DFD5] flex items-center justify-center text-[#C5A059]">
+                          {isExpanded ? <ChevronUp className="w-4 h-4" /> : <ChevronDown className="w-4 h-4" />}
+                        </div>
+                      </div>
+                    </button>
+
+                    {/* ACCORDION EXPANDED CONTENT */}
+                    {isExpanded && (
+                      <div className="p-4 pt-3 border-t border-[#E5DFD5] bg-[#FAF9F6]/60 space-y-4 text-xs">
+                        <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 bg-white p-3.5 rounded-xl border border-[#E5DFD5]">
+                          <div>
+                            <span className="text-[10px] font-bold uppercase text-[#2D2D2D]/50 block">Status da Presença</span>
+                            <p className="font-semibold text-[#2D2D2D] mt-0.5">
+                              {guest.status === 'confirmed' ? '🟢 Presença Confirmada' : guest.status === 'pending' ? '🟡 Aguardando Resposta' : '🔴 Não Poderá Comparecer'}
+                            </p>
+                          </div>
+
+                          <div>
+                            <span className="text-[10px] font-bold uppercase text-[#2D2D2D]/50 block">Acompanhantes</span>
+                            <p className="font-semibold text-[#2D2D2D] mt-0.5">
+                              {guest.companions > 0 ? `${guest.companions} acompanhante(s) confirmado(s)` : 'Nenhum acompanhante'}
+                            </p>
+                          </div>
+
+                          <div>
+                            <span className="text-[10px] font-bold uppercase text-[#2D2D2D]/50 block">Telefone / WhatsApp</span>
+                            <p className="font-mono text-[#2D2D2D] mt-0.5">
+                              {guest.phone || 'Não informado'}
+                            </p>
+                          </div>
+
+                          <div>
+                            <span className="text-[10px] font-bold uppercase text-[#2D2D2D]/50 block">E-mail</span>
+                            <p className="font-mono text-[#2D2D2D] mt-0.5">
+                              {guest.email || 'Não informado'}
+                            </p>
+                          </div>
+                        </div>
+
+                        {guest.message && (
+                          <div className="bg-white p-3.5 rounded-xl border border-[#E5DFD5] space-y-1">
+                            <span className="text-[10px] font-bold uppercase text-[#2D2D2D]/50 block">Mensagem do Convidado:</span>
+                            <p className="italic text-[#2D2D2D]/80 leading-relaxed">
+                              "{guest.message}"
+                            </p>
+                          </div>
+                        )}
+
+                        {/* ACTION BUTTONS */}
+                        <div className="pt-2 border-t border-[#E5DFD5] flex flex-wrap items-center justify-between gap-2">
                           <button
+                            type="button"
                             onClick={() => handleCopyWhatsAppInvite(guest.name)}
-                            title="Mandar Convite WhatsApp"
-                            className="p-1.5 text-emerald-600 hover:bg-emerald-50 rounded-lg transition"
+                            className="px-3.5 py-2 bg-emerald-50 hover:bg-emerald-100 text-emerald-800 font-bold text-xs rounded-xl transition border border-emerald-200 flex items-center space-x-1.5 active:scale-95"
                           >
-                            <MessageSquare className="w-4 h-4" />
+                            <MessageSquare className="w-3.5 h-3.5 text-emerald-600" />
+                            <span>Enviar Convite WhatsApp</span>
                           </button>
-                          <button
-                            onClick={() => {
-                              setSelectedGuestForEdit(guest);
-                              setIsGuestModalOpen(true);
-                            }}
-                            title="Editar Convidado"
-                            className="p-1.5 text-stone-600 hover:bg-stone-100 rounded-lg transition"
-                          >
-                            <Edit className="w-4 h-4" />
-                          </button>
-                          <button
-                            onClick={() => onDeleteGuest(guest.id)}
-                            title="Excluir Convidado"
-                            className="p-1.5 text-rose-600 hover:bg-rose-50 rounded-lg transition"
-                          >
-                            <Trash2 className="w-4 h-4" />
-                          </button>
-                        </td>
-                      </tr>
-                    ))
-                  )}
-                </tbody>
-              </table>
-            </div>
+
+                          <div className="flex items-center space-x-2 ml-auto">
+                            <button
+                              type="button"
+                              onClick={() => {
+                                setSelectedGuestForEdit(guest);
+                                setIsGuestModalOpen(true);
+                              }}
+                              className="px-3.5 py-2 bg-white hover:bg-[#F2ECE4] text-[#2D2D2D] font-bold text-xs rounded-xl transition border border-[#E5DFD5] flex items-center space-x-1.5 active:scale-95"
+                            >
+                              <Edit className="w-3.5 h-3.5" />
+                              <span>Editar</span>
+                            </button>
+
+                            <button
+                              type="button"
+                              onClick={() => onDeleteGuest(guest.id)}
+                              className="px-3.5 py-2 bg-white hover:bg-rose-50 text-rose-700 font-bold text-xs rounded-xl transition border border-rose-200 flex items-center space-x-1.5 active:scale-95"
+                            >
+                              <Trash2 className="w-3.5 h-3.5" />
+                              <span>Excluir</span>
+                            </button>
+                          </div>
+                        </div>
+                      </div>
+                    )}
+                  </div>
+                );
+              })
+            )}
           </div>
         </div>
       )}
@@ -572,8 +937,8 @@ export const AdminPanel: React.FC<AdminPanelProps> = ({
         <div className="space-y-6">
           <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
             <div>
-              <h2 className="font-serif text-2xl font-bold text-stone-800">Gestão de Presentes</h2>
-              <p className="text-xs text-stone-500">Cadastre itens, edite preferências ou libere presentes escolhidos</p>
+              <h2 className="font-serif text-2xl font-bold text-[#2D2D2D]">Gestão de Presentes</h2>
+              <p className="text-xs text-[#2D2D2D]/60 font-sans">Cadastre itens, edite preferências ou libere presentes escolhidos</p>
             </div>
 
             <button
@@ -581,30 +946,30 @@ export const AdminPanel: React.FC<AdminPanelProps> = ({
                 setSelectedGiftForEdit(null);
                 setIsGiftModalOpen(true);
               }}
-              className="px-4 py-2.5 bg-rose-600 hover:bg-rose-700 text-white font-semibold text-xs rounded-xl shadow-xs transition flex items-center space-x-2 self-start sm:self-auto"
+              className="px-5 py-3 bg-[#2D2D2D] hover:bg-black active:scale-95 text-white font-bold text-[10px] uppercase tracking-[0.2em] rounded-2xl shadow-xs transition-all flex items-center space-x-2 self-start sm:self-auto"
             >
-              <Plus className="w-4 h-4" />
+              <Plus className="w-4 h-4 text-[#C5A059]" />
               <span>Cadastrar Novo Presente</span>
             </button>
           </div>
 
           {/* Search & Category Filter */}
-          <div className="bg-white p-4 rounded-2xl border border-rose-100 flex flex-col sm:flex-row gap-3">
+          <div className="bg-white p-5 rounded-3xl border border-[#E5DFD5] shadow-xs flex flex-col sm:flex-row gap-3">
             <div className="relative flex-1">
-              <Search className="w-4 h-4 text-stone-400 absolute left-3.5 top-3" />
+              <Search className="w-4 h-4 text-[#2D2D2D]/40 absolute left-4 top-3.5" />
               <input 
                 type="text"
                 placeholder="Buscar presente ou nome do convidado..."
                 value={giftSearch}
                 onChange={e => setGiftSearch(e.target.value)}
-                className="w-full pl-10 pr-3 py-2 text-sm border border-stone-200 rounded-xl focus:ring-2 focus:ring-rose-400 outline-none transition"
+                className="w-full pl-11 pr-4 py-2.5 text-sm border border-[#E5DFD5] bg-[#FAF9F6] rounded-2xl focus:border-[#C5A059] outline-none transition"
               />
             </div>
 
             <select
               value={giftCategoryFilter}
               onChange={e => setGiftCategoryFilter(e.target.value)}
-              className="px-3 py-2 text-xs font-semibold border border-stone-200 rounded-xl focus:ring-2 focus:ring-rose-400 outline-none transition bg-white text-stone-700"
+              className="px-4 py-2.5 text-xs font-semibold border border-[#E5DFD5] rounded-2xl focus:border-[#C5A059] outline-none transition bg-[#FAF9F6] text-[#2D2D2D]"
             >
               <option value="Todas">Todas as Categorias</option>
               {CATEGORIES.map(c => (
@@ -615,7 +980,7 @@ export const AdminPanel: React.FC<AdminPanelProps> = ({
             <select
               value={giftStatusFilter}
               onChange={e => setGiftStatusFilter(e.target.value as any)}
-              className="px-3 py-2 text-xs font-semibold border border-stone-200 rounded-xl focus:ring-2 focus:ring-rose-400 outline-none transition bg-white text-stone-700"
+              className="px-4 py-2.5 text-xs font-semibold border border-[#E5DFD5] rounded-2xl focus:border-[#C5A059] outline-none transition bg-[#FAF9F6] text-[#2D2D2D]"
             >
               <option value="all">Todos os Status</option>
               <option value="claimed">🔒 Reservados</option>
@@ -624,10 +989,10 @@ export const AdminPanel: React.FC<AdminPanelProps> = ({
           </div>
 
           {/* Gifts Table */}
-          <div className="bg-white rounded-3xl border border-rose-100 shadow-xs overflow-hidden">
+          <div className="bg-white rounded-3xl border border-[#E5DFD5] shadow-xs overflow-hidden">
             <div className="overflow-x-auto">
               <table className="w-full text-left text-xs">
-                <thead className="bg-rose-50/70 text-stone-700 font-semibold uppercase tracking-wider border-b border-rose-100">
+                <thead className="bg-[#FAF9F6] text-[#2D2D2D] font-bold text-[10px] uppercase tracking-[0.2em] border-b border-[#E5DFD5]">
                   <tr>
                     <th className="p-4">Item</th>
                     <th className="p-4">Categoria</th>
@@ -636,34 +1001,34 @@ export const AdminPanel: React.FC<AdminPanelProps> = ({
                     <th className="p-4 text-right">Ações</th>
                   </tr>
                 </thead>
-                <tbody className="divide-y divide-stone-100 text-stone-700">
+                <tbody className="divide-y divide-[#E5DFD5] text-[#2D2D2D]">
                   {filteredGifts.length === 0 ? (
                     <tr>
-                      <td colSpan={5} className="p-8 text-center text-stone-400">
+                      <td colSpan={5} className="p-8 text-center text-[#2D2D2D]/50 italic">
                         Nenhum presente encontrado.
                       </td>
                     </tr>
                   ) : (
                     filteredGifts.map(gift => (
-                      <tr key={gift.id} className="hover:bg-rose-50/30 transition">
-                        <td className="p-4 font-semibold text-stone-800">
+                      <tr key={gift.id} className="hover:bg-[#FAF9F6] transition">
+                        <td className="p-4 font-semibold text-[#2D2D2D]">
                           <div>{gift.name}</div>
                           {gift.description && (
-                            <div className="text-[11px] text-stone-500 font-normal">{gift.description}</div>
+                            <div className="text-[11px] text-[#2D2D2D]/60 font-normal">{gift.description}</div>
                           )}
                         </td>
                         <td className="p-4">
-                          <span className="px-2 py-0.5 rounded-full text-[10px] font-semibold bg-stone-100 text-stone-700">
+                          <span className="px-3 py-1 rounded-full text-[10px] font-bold uppercase tracking-wider bg-[#FAF9F6] text-[#2D2D2D] border border-[#E5DFD5]">
                             {gift.category}
                           </span>
                         </td>
                         <td className="p-4">
                           {gift.isClaimed ? (
-                            <span className="px-2.5 py-0.5 rounded-full text-[10px] font-semibold bg-rose-100 text-rose-800">
+                            <span className="px-3 py-1 rounded-full text-[10px] font-bold uppercase tracking-wider bg-rose-50 text-rose-800 border border-rose-200">
                               🔒 Reservado
                             </span>
                           ) : (
-                            <span className="px-2.5 py-0.5 rounded-full text-[10px] font-semibold bg-emerald-100 text-emerald-800">
+                            <span className="px-3 py-1 rounded-full text-[10px] font-bold uppercase tracking-wider bg-emerald-50 text-emerald-800 border border-emerald-200">
                               🟢 Disponível
                             </span>
                           )}
@@ -671,13 +1036,13 @@ export const AdminPanel: React.FC<AdminPanelProps> = ({
                         <td className="p-4 font-medium">
                           {gift.isClaimed ? (
                             <div>
-                              <span className="font-bold text-stone-800">{gift.claimedByGuestName || 'Convidado'}</span>
+                              <span className="font-bold text-[#2D2D2D]">{gift.claimedByGuestName || 'Convidado'}</span>
                               {gift.claimedByGuestPhone && (
-                                <span className="block text-[10px] text-stone-400">{gift.claimedByGuestPhone}</span>
+                                <span className="block text-[10px] text-[#2D2D2D]/40 font-mono">{gift.claimedByGuestPhone}</span>
                               )}
                             </div>
                           ) : (
-                            <span className="text-stone-400 italic">Disponível</span>
+                            <span className="text-[#2D2D2D]/40 italic">Disponível</span>
                           )}
                         </td>
                         <td className="p-4 text-right space-x-1">
@@ -685,7 +1050,7 @@ export const AdminPanel: React.FC<AdminPanelProps> = ({
                             <button
                               onClick={() => onUnclaimGift(gift.id)}
                               title="Liberar / Desmarcar Presente"
-                              className="px-2 py-1 text-[11px] font-semibold text-amber-700 bg-amber-50 hover:bg-amber-100 rounded-lg transition"
+                              className="px-3 py-1.5 text-[10px] font-bold uppercase tracking-wider text-amber-800 bg-amber-50 hover:bg-amber-100 rounded-xl transition border border-amber-200"
                             >
                               Liberar
                             </button>
@@ -696,14 +1061,14 @@ export const AdminPanel: React.FC<AdminPanelProps> = ({
                               setIsGiftModalOpen(true);
                             }}
                             title="Editar Presente"
-                            className="p-1.5 text-stone-600 hover:bg-stone-100 rounded-lg transition"
+                            className="p-2 text-[#2D2D2D] hover:bg-[#F2ECE4] rounded-xl transition"
                           >
                             <Edit className="w-4 h-4" />
                           </button>
                           <button
                             onClick={() => onDeleteGift(gift.id)}
                             title="Excluir Presente"
-                            className="p-1.5 text-rose-600 hover:bg-rose-50 rounded-lg transition"
+                            className="p-2 text-rose-600 hover:bg-rose-50 rounded-xl transition"
                           >
                             <Trash2 className="w-4 h-4" />
                           </button>
@@ -720,25 +1085,25 @@ export const AdminPanel: React.FC<AdminPanelProps> = ({
 
       {/* TAB 4: ENVIAR CONVITES */}
       {activeTab === 'invite' && (
-        <div className="bg-white rounded-3xl p-6 sm:p-8 border border-rose-100 shadow-xs max-w-2xl mx-auto space-y-6">
+        <div className="bg-white rounded-3xl p-6 sm:p-8 border border-[#E5DFD5] shadow-xs max-w-2xl mx-auto space-y-6">
           <div className="space-y-2 text-center">
-            <div className="p-3 bg-rose-100 text-rose-700 rounded-2xl w-fit mx-auto">
+            <div className="p-3 bg-[#F2ECE4] text-[#C5A059] rounded-2xl w-fit mx-auto shadow-2xs">
               <Share2 className="w-6 h-6" />
             </div>
-            <h2 className="font-serif text-2xl font-bold text-stone-800">Gerador de Convite para WhatsApp</h2>
-            <p className="text-xs text-stone-500">Copie a mensagem pronta com o link do seu site para enviar no WhatsApp aos convidados!</p>
+            <h2 className="font-serif italic text-2xl font-bold text-[#2D2D2D]">Gerador de Convite para WhatsApp</h2>
+            <p className="text-xs text-[#2D2D2D]/60 font-sans">Copie a mensagem pronta com o link do seu site para enviar no WhatsApp aos convidados!</p>
           </div>
 
-          <div className="bg-stone-900 text-emerald-300 p-5 rounded-2xl font-mono text-xs whitespace-pre-wrap leading-relaxed shadow-inner">
+          <div className="bg-[#2D2D2D] text-emerald-300 p-6 rounded-3xl font-mono text-xs whitespace-pre-wrap leading-relaxed shadow-inner border border-stone-800">
             {getWhatsAppMessage()}
           </div>
 
           <div className="flex flex-col sm:flex-row gap-3">
             <button
               onClick={() => handleCopyWhatsAppInvite()}
-              className="flex-1 py-3 bg-rose-600 hover:bg-rose-700 text-white font-semibold text-xs rounded-xl shadow-xs transition flex items-center justify-center space-x-2"
+              className="flex-1 py-3.5 bg-[#2D2D2D] hover:bg-black active:scale-98 text-white font-bold text-[10px] uppercase tracking-[0.2em] rounded-2xl shadow-xs transition-all flex items-center justify-center space-x-2"
             >
-              {copiedInvite ? <Check className="w-4 h-4" /> : <Copy className="w-4 h-4" />}
+              {copiedInvite ? <Check className="w-4 h-4 text-[#C5A059]" /> : <Copy className="w-4 h-4 text-[#C5A059]" />}
               <span>{copiedInvite ? 'Texto Copiado!' : 'Copiar Texto para WhatsApp'}</span>
             </button>
 
@@ -746,7 +1111,7 @@ export const AdminPanel: React.FC<AdminPanelProps> = ({
               href={`https://api.whatsapp.com/send?text=${encodeURIComponent(getWhatsAppMessage())}`}
               target="_blank"
               rel="noreferrer"
-              className="flex-1 py-3 bg-emerald-600 hover:bg-emerald-700 text-white font-semibold text-xs rounded-xl shadow-xs transition flex items-center justify-center space-x-2 text-center"
+              className="flex-1 py-3.5 bg-emerald-800 hover:bg-emerald-900 active:scale-98 text-white font-bold text-[10px] uppercase tracking-[0.2em] rounded-2xl shadow-xs transition-all flex items-center justify-center space-x-2 text-center"
             >
               <MessageSquare className="w-4 h-4" />
               <span>Abrir WhatsApp</span>
@@ -757,22 +1122,28 @@ export const AdminPanel: React.FC<AdminPanelProps> = ({
 
       {/* TAB 5: CONFIGURAÇÕES DO EVENTO */}
       {activeTab === 'settings' && (
-        <div className="bg-white rounded-3xl p-6 sm:p-8 border border-rose-100 shadow-xs max-w-2xl mx-auto space-y-6">
+        <div className="bg-white rounded-3xl p-6 sm:p-8 border border-[#E5DFD5] shadow-xs max-w-2xl mx-auto space-y-6">
           <div className="space-y-1">
-            <h2 className="font-serif text-2xl font-bold text-stone-800">Configurações do Chá de Panela</h2>
-            <p className="text-xs text-stone-500">Personalize dados dos noivos, data, horário, local e chave PIX</p>
+            <h2 className="font-serif italic text-2xl font-bold text-[#2D2D2D]">Configurações do Chá de Panela</h2>
+            <p className="text-xs text-[#2D2D2D]/60 font-sans">Personalize dados dos noivos, data, horário, local e chave PIX</p>
           </div>
 
           {settingsSuccess && (
-            <div className="p-3 text-xs bg-emerald-100 text-emerald-800 rounded-xl border border-emerald-200 font-semibold">
+            <div className="p-4 text-xs bg-emerald-50 text-emerald-800 rounded-2xl border border-emerald-200 font-bold">
               Configurações salvas com sucesso!
             </div>
           )}
 
           <form onSubmit={handleSaveSettings} className="space-y-4">
+            {/* Couple Photo Upload System */}
+            <CouplePhotoUploader
+              currentPhotoUrl={eventForm.coverImage}
+              onPhotoChange={(url) => setEventForm({ ...eventForm, coverImage: url })}
+            />
+
             <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
               <div>
-                <label className="block text-xs font-semibold text-stone-700 uppercase tracking-wider mb-1">
+                <label className="block text-[10px] font-bold text-[#2D2D2D] uppercase tracking-[0.15em] mb-1.5">
                   Nome da Noiva
                 </label>
                 <input 
@@ -780,12 +1151,12 @@ export const AdminPanel: React.FC<AdminPanelProps> = ({
                   required
                   value={eventForm.brideName}
                   onChange={e => setEventForm({ ...eventForm, brideName: e.target.value })}
-                  className="w-full px-3 py-2 text-sm border border-stone-200 rounded-xl focus:ring-2 focus:ring-rose-400 outline-none transition"
+                  className="w-full px-4 py-2.5 text-sm border border-[#E5DFD5] bg-[#FAF9F6] rounded-2xl focus:border-[#C5A059] outline-none transition"
                 />
               </div>
 
               <div>
-                <label className="block text-xs font-semibold text-stone-700 uppercase tracking-wider mb-1">
+                <label className="block text-[10px] font-bold text-[#2D2D2D] uppercase tracking-[0.15em] mb-1.5">
                   Nome do Noivo
                 </label>
                 <input 
@@ -793,13 +1164,13 @@ export const AdminPanel: React.FC<AdminPanelProps> = ({
                   required
                   value={eventForm.groomName}
                   onChange={e => setEventForm({ ...eventForm, groomName: e.target.value })}
-                  className="w-full px-3 py-2 text-sm border border-stone-200 rounded-xl focus:ring-2 focus:ring-rose-400 outline-none transition"
+                  className="w-full px-4 py-2.5 text-sm border border-[#E5DFD5] bg-[#FAF9F6] rounded-2xl focus:border-[#C5A059] outline-none transition"
                 />
               </div>
             </div>
 
             <div>
-              <label className="block text-xs font-semibold text-stone-700 uppercase tracking-wider mb-1">
+              <label className="block text-[10px] font-bold text-[#2D2D2D] uppercase tracking-[0.15em] mb-1.5">
                 Título do Evento
               </label>
               <input 
@@ -807,13 +1178,13 @@ export const AdminPanel: React.FC<AdminPanelProps> = ({
                 required
                 value={eventForm.eventTitle}
                 onChange={e => setEventForm({ ...eventForm, eventTitle: e.target.value })}
-                className="w-full px-3 py-2 text-sm border border-stone-200 rounded-xl focus:ring-2 focus:ring-rose-400 outline-none transition"
+                className="w-full px-4 py-2.5 text-sm border border-[#E5DFD5] bg-[#FAF9F6] rounded-2xl focus:border-[#C5A059] outline-none transition"
               />
             </div>
 
             <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
               <div>
-                <label className="block text-xs font-semibold text-stone-700 uppercase tracking-wider mb-1">
+                <label className="block text-[10px] font-bold text-[#2D2D2D] uppercase tracking-[0.15em] mb-1.5">
                   Data do Evento
                 </label>
                 <input 
@@ -821,12 +1192,12 @@ export const AdminPanel: React.FC<AdminPanelProps> = ({
                   required
                   value={eventForm.date}
                   onChange={e => setEventForm({ ...eventForm, date: e.target.value })}
-                  className="w-full px-3 py-2 text-sm border border-stone-200 rounded-xl focus:ring-2 focus:ring-rose-400 outline-none transition"
+                  className="w-full px-4 py-2.5 text-sm border border-[#E5DFD5] bg-[#FAF9F6] rounded-2xl focus:border-[#C5A059] outline-none transition"
                 />
               </div>
 
               <div>
-                <label className="block text-xs font-semibold text-stone-700 uppercase tracking-wider mb-1">
+                <label className="block text-[10px] font-bold text-[#2D2D2D] uppercase tracking-[0.15em] mb-1.5">
                   Horário
                 </label>
                 <input 
@@ -834,90 +1205,90 @@ export const AdminPanel: React.FC<AdminPanelProps> = ({
                   placeholder="Ex: 15:30"
                   value={eventForm.time}
                   onChange={e => setEventForm({ ...eventForm, time: e.target.value })}
-                  className="w-full px-3 py-2 text-sm border border-stone-200 rounded-xl focus:ring-2 focus:ring-rose-400 outline-none transition"
+                  className="w-full px-4 py-2.5 text-sm border border-[#E5DFD5] bg-[#FAF9F6] rounded-2xl focus:border-[#C5A059] outline-none transition"
                 />
               </div>
             </div>
 
             <div>
-              <label className="block text-xs font-semibold text-stone-700 uppercase tracking-wider mb-1">
+              <label className="block text-[10px] font-bold text-[#2D2D2D] uppercase tracking-[0.15em] mb-1.5">
                 Endereço Completo
               </label>
               <input 
                 type="text"
                 value={eventForm.location}
                 onChange={e => setEventForm({ ...eventForm, location: e.target.value })}
-                className="w-full px-3 py-2 text-sm border border-stone-200 rounded-xl focus:ring-2 focus:ring-rose-400 outline-none transition"
+                className="w-full px-4 py-2.5 text-sm border border-[#E5DFD5] bg-[#FAF9F6] rounded-2xl focus:border-[#C5A059] outline-none transition"
               />
             </div>
 
             <div>
-              <label className="block text-xs font-semibold text-stone-700 uppercase tracking-wider mb-1">
+              <label className="block text-[10px] font-bold text-[#2D2D2D] uppercase tracking-[0.15em] mb-1.5">
                 Link do Google Maps
               </label>
               <input 
                 type="url"
                 value={eventForm.googleMapsUrl}
                 onChange={e => setEventForm({ ...eventForm, googleMapsUrl: e.target.value })}
-                className="w-full px-3 py-2 text-sm border border-stone-200 rounded-xl focus:ring-2 focus:ring-rose-400 outline-none transition"
+                className="w-full px-4 py-2.5 text-sm border border-[#E5DFD5] bg-[#FAF9F6] rounded-2xl focus:border-[#C5A059] outline-none transition"
               />
             </div>
 
             <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
               <div>
-                <label className="block text-xs font-semibold text-stone-700 uppercase tracking-wider mb-1">
+                <label className="block text-[10px] font-bold text-[#2D2D2D] uppercase tracking-[0.15em] mb-1.5">
                   Chave PIX
                 </label>
                 <input 
                   type="text"
                   value={eventForm.pixKey}
                   onChange={e => setEventForm({ ...eventForm, pixKey: e.target.value })}
-                  className="w-full px-3 py-2 text-sm border border-stone-200 rounded-xl focus:ring-2 focus:ring-rose-400 outline-none transition"
+                  className="w-full px-4 py-2.5 text-sm border border-[#E5DFD5] bg-[#FAF9F6] rounded-2xl focus:border-[#C5A059] outline-none transition"
                 />
               </div>
 
               <div>
-                <label className="block text-xs font-semibold text-stone-700 uppercase tracking-wider mb-1">
+                <label className="block text-[10px] font-bold text-[#2D2D2D] uppercase tracking-[0.15em] mb-1.5">
                   Titular do PIX
                 </label>
                 <input 
                   type="text"
                   value={eventForm.pixName}
                   onChange={e => setEventForm({ ...eventForm, pixName: e.target.value })}
-                  className="w-full px-3 py-2 text-sm border border-stone-200 rounded-xl focus:ring-2 focus:ring-rose-400 outline-none transition"
+                  className="w-full px-4 py-2.5 text-sm border border-[#E5DFD5] bg-[#FAF9F6] rounded-2xl focus:border-[#C5A059] outline-none transition"
                 />
               </div>
             </div>
 
             <div>
-              <label className="block text-xs font-semibold text-stone-700 uppercase tracking-wider mb-1">
+              <label className="block text-[10px] font-bold text-[#2D2D2D] uppercase tracking-[0.15em] mb-1.5">
                 Mensagem de Boas-Vindas aos Convidados
               </label>
               <textarea 
                 rows={3}
                 value={eventForm.welcomeMessage}
                 onChange={e => setEventForm({ ...eventForm, welcomeMessage: e.target.value })}
-                className="w-full px-3 py-2 text-sm border border-stone-200 rounded-xl focus:ring-2 focus:ring-rose-400 outline-none transition resize-none"
+                className="w-full px-4 py-2.5 text-sm border border-[#E5DFD5] bg-[#FAF9F6] rounded-2xl focus:border-[#C5A059] outline-none transition resize-none"
               />
             </div>
 
             <div>
-              <label className="block text-xs font-semibold text-stone-700 uppercase tracking-wider mb-1">
+              <label className="block text-[10px] font-bold text-[#2D2D2D] uppercase tracking-[0.15em] mb-1.5">
                 Senha de Acesso do Painel
               </label>
               <input 
                 type="text"
                 value={eventForm.adminPassword}
                 onChange={e => setEventForm({ ...eventForm, adminPassword: e.target.value })}
-                className="w-full px-3 py-2 text-sm border border-stone-200 rounded-xl focus:ring-2 focus:ring-rose-400 outline-none transition"
+                className="w-full px-4 py-2.5 text-sm border border-[#E5DFD5] bg-[#FAF9F6] rounded-2xl focus:border-[#C5A059] outline-none transition"
               />
             </div>
 
-            <div className="pt-3 border-t border-stone-100 flex items-center justify-between">
+            <div className="pt-4 border-t border-[#E5DFD5] flex items-center justify-between">
               <button
                 type="button"
                 onClick={() => setResetConfirming(true)}
-                className="text-xs font-semibold text-rose-600 hover:underline"
+                className="text-xs font-semibold text-rose-700 hover:underline"
               >
                 Restaurar dados de exemplo
               </button>
@@ -925,26 +1296,27 @@ export const AdminPanel: React.FC<AdminPanelProps> = ({
               <button
                 type="submit"
                 disabled={settingsLoading}
-                className="px-6 py-2.5 bg-rose-600 hover:bg-rose-700 text-white font-semibold text-xs rounded-xl shadow-xs transition"
+                className="px-6 py-3 bg-[#2D2D2D] hover:bg-black active:scale-95 text-white font-bold text-[10px] uppercase tracking-[0.2em] rounded-2xl shadow-xs transition-all flex items-center space-x-2"
               >
-                {settingsLoading ? 'Salvando...' : 'Salvar Alterações'}
+                <Sparkles className="w-3.5 h-3.5 text-[#C5A059]" />
+                <span>{settingsLoading ? 'Salvando...' : 'Salvar Alterações'}</span>
               </button>
             </div>
           </form>
 
           {/* Reset Modal confirmation */}
           {resetConfirming && (
-            <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-stone-900/60 backdrop-blur-xs">
-              <div className="bg-white rounded-2xl p-6 max-w-sm w-full space-y-4 border border-rose-100 text-center">
+            <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-[#2D2D2D]/60 backdrop-blur-xs">
+              <div className="bg-white rounded-3xl p-6 max-w-sm w-full space-y-4 border border-[#E5DFD5] text-center shadow-xl">
                 <AlertCircle className="w-8 h-8 text-rose-600 mx-auto" />
-                <h3 className="font-serif font-bold text-stone-800 text-base">Restaurar Dados?</h3>
-                <p className="text-xs text-stone-500">
+                <h3 className="font-serif italic font-bold text-[#2D2D2D] text-lg">Restaurar Dados?</h3>
+                <p className="text-xs text-[#2D2D2D]/60 font-sans">
                   Isso irá restaurar a lista inicial de exemplo com convidados e presentes padrão.
                 </p>
                 <div className="flex space-x-2">
                   <button
                     onClick={() => setResetConfirming(false)}
-                    className="flex-1 py-2 text-xs font-semibold text-stone-600 bg-stone-100 rounded-xl"
+                    className="flex-1 py-3 text-xs font-bold text-[#2D2D2D] bg-[#F2ECE4] rounded-2xl transition hover:bg-[#E5DFD5]"
                   >
                     Cancelar
                   </button>
@@ -954,7 +1326,7 @@ export const AdminPanel: React.FC<AdminPanelProps> = ({
                       setResetConfirming(false);
                       setIsAuthenticated(false);
                     }}
-                    className="flex-1 py-2 text-xs font-semibold text-white bg-rose-600 rounded-xl"
+                    className="flex-1 py-3 text-xs font-bold text-white bg-rose-600 rounded-2xl hover:bg-rose-700 transition"
                   >
                     Restaurar
                   </button>
@@ -962,6 +1334,92 @@ export const AdminPanel: React.FC<AdminPanelProps> = ({
               </div>
             </div>
           )}
+        </div>
+      )}
+
+      {/* TAB 6: BANCO DE DADOS FIREBASE */}
+      {activeTab === 'firebase' && (
+        <div className="bg-white rounded-3xl p-6 sm:p-8 border border-[#E5DFD5] shadow-xs max-w-3xl mx-auto space-y-6">
+          <div className="flex items-start justify-between border-b border-[#E5DFD5] pb-5">
+            <div className="space-y-1">
+              <div className="flex items-center space-x-2">
+                <Database className="w-5 h-5 text-[#FFCA28]" />
+                <h2 className="font-serif italic text-2xl font-bold text-[#2D2D2D]">Integração Firebase</h2>
+              </div>
+              <p className="text-xs text-[#2D2D2D]/60 font-sans">
+                Conectado ao seu projeto Firebase em nuvem (Firestore Database & Auth)
+              </p>
+            </div>
+            <div className="px-3 py-1 rounded-full text-[10px] font-bold uppercase tracking-wider flex items-center space-x-1.5 bg-emerald-50 text-emerald-700 border border-emerald-200">
+              <span className="w-2 h-2 rounded-full bg-emerald-500 animate-pulse" />
+              <span>Conectado</span>
+            </div>
+          </div>
+
+          {/* Status Message */}
+          {firebaseStatus !== 'idle' && (
+            <div className={`p-4 text-xs rounded-2xl border font-bold flex items-center space-x-2 ${
+              firebaseStatus === 'success' 
+                ? 'bg-emerald-50 text-emerald-800 border-emerald-200' 
+                : firebaseStatus === 'testing'
+                ? 'bg-amber-50 text-amber-800 border-amber-200'
+                : 'bg-rose-50 text-rose-800 border-rose-200'
+            }`}>
+              <Sparkles className="w-4 h-4 shrink-0" />
+              <span>{firebaseMessage}</span>
+            </div>
+          )}
+
+          {/* Firebase Credentials Details */}
+          <div className="space-y-4">
+            <div className="p-4 bg-[#FAF9F6] border border-[#E5DFD5] rounded-2xl space-y-3">
+              <h3 className="text-xs font-bold text-[#2D2D2D] uppercase tracking-wider flex items-center space-x-2">
+                <Sparkles className="w-3.5 h-3.5 text-[#C5A059]" />
+                <span>Configuração Firebase Ativa</span>
+              </h3>
+              
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 text-xs">
+                <div>
+                  <span className="text-[10px] font-bold text-[#2D2D2D]/60 block uppercase">Project ID</span>
+                  <span className="font-mono text-[#2D2D2D] font-bold">{firebaseConfig.projectId}</span>
+                </div>
+                <div>
+                  <span className="text-[10px] font-bold text-[#2D2D2D]/60 block uppercase">Auth Domain</span>
+                  <span className="font-mono text-[#2D2D2D] font-bold">{firebaseConfig.authDomain}</span>
+                </div>
+                <div>
+                  <span className="text-[10px] font-bold text-[#2D2D2D]/60 block uppercase">App ID</span>
+                  <span className="font-mono text-[#2D2D2D] font-bold truncate block">{firebaseConfig.appId}</span>
+                </div>
+                <div>
+                  <span className="text-[10px] font-bold text-[#2D2D2D]/60 block uppercase">Storage Bucket</span>
+                  <span className="font-mono text-[#2D2D2D] font-bold truncate block">{firebaseConfig.storageBucket}</span>
+                </div>
+              </div>
+            </div>
+
+            <div className="flex justify-end pt-2">
+              <button
+                type="button"
+                onClick={async () => {
+                  setFirebaseStatus('testing');
+                  setFirebaseMessage('Testando conexão com o Firestore...');
+                  const ok = await testFirebaseConnection();
+                  if (ok) {
+                    setFirebaseStatus('success');
+                    setFirebaseMessage('Conexão estabelecida com sucesso com o seu projeto Firebase!');
+                  } else {
+                    setFirebaseStatus('error');
+                    setFirebaseMessage('Não foi possível se conectar ao Firestore. Verifique se o banco Firestore está ativo no Firebase Console.');
+                  }
+                }}
+                className="px-6 py-3 bg-[#2D2D2D] hover:bg-black active:scale-95 text-white font-bold text-[10px] uppercase tracking-[0.2em] rounded-2xl shadow-xs transition-all flex items-center space-x-2 cursor-pointer"
+              >
+                <CheckCircle2 className="w-3.5 h-3.5 text-[#C5A059]" />
+                <span>Testar Conexão Firebase</span>
+              </button>
+            </div>
+          </div>
         </div>
       )}
 
@@ -986,6 +1444,209 @@ export const AdminPanel: React.FC<AdminPanelProps> = ({
         }}
         onSave={onSaveGift}
       />
+
+      {/* Couple Drawer (Painel de Dados dos Noivos para Mobile e Desktop) */}
+      {isCoupleDrawerOpen && (
+        <div className="fixed inset-0 z-50 flex items-end sm:items-center justify-center p-0 sm:p-4 bg-[#2D2D2D]/60 backdrop-blur-xs transition-all duration-300">
+          <div className="bg-white rounded-t-[2.5rem] sm:rounded-3xl shadow-2xl max-w-xl w-full overflow-hidden border-t sm:border border-[#E5DFD5] max-h-[92vh] sm:max-h-[90vh] flex flex-col transition-transform animate-slide-up sm:animate-fade-in">
+            {/* Mobile Touch Drag Bar */}
+            <div className="w-12 h-1.5 bg-[#E5DFD5] rounded-full mx-auto mt-3 mb-1 sm:hidden shrink-0" />
+
+            <div className="bg-[#FAF9F6] px-5 sm:px-6 py-4 border-b border-[#E5DFD5] flex items-center justify-between shrink-0">
+              <div className="flex items-center space-x-3">
+                <div className="p-2.5 bg-[#F2ECE4] text-[#C5A059] rounded-2xl shadow-2xs">
+                  <Heart className="w-5 h-5 fill-current" />
+                </div>
+                <div>
+                  <h3 className="text-base sm:text-lg font-bold text-[#2D2D2D]">
+                    Painel dos Noivos
+                  </h3>
+                  <p className="text-xs text-[#2D2D2D]/60 font-sans">
+                    Atualize nomes, data, local e chave PIX do casal
+                  </p>
+                </div>
+              </div>
+              <button 
+                type="button"
+                onClick={() => setIsCoupleDrawerOpen(false)}
+                className="text-[#2D2D2D]/50 hover:text-[#2D2D2D] p-2 rounded-xl hover:bg-[#F2ECE4] transition"
+              >
+                <X className="w-5 h-5" />
+              </button>
+            </div>
+
+            <form 
+              onSubmit={async (e) => {
+                await handleSaveSettings(e);
+                setIsCoupleDrawerOpen(false);
+              }} 
+              className="p-5 sm:p-6 space-y-4 overflow-y-auto flex-1"
+            >
+              {settingsSuccess && (
+                <div className="p-3.5 text-xs bg-emerald-50 text-emerald-800 rounded-2xl border border-emerald-200 font-bold flex items-center space-x-2">
+                  <Check className="w-4 h-4 text-emerald-600 shrink-0" />
+                  <span>Dados dos noivos atualizados com sucesso!</span>
+                </div>
+              )}
+
+              {/* Upload Foto do Casal */}
+              <CouplePhotoUploader
+                currentPhotoUrl={eventForm.coverImage}
+                onPhotoChange={(url) => setEventForm({ ...eventForm, coverImage: url })}
+              />
+
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                <div>
+                  <label className="block text-[10px] sm:text-xs font-bold text-[#2D2D2D] uppercase tracking-[0.15em] mb-1.5">
+                    Nome da Noiva <span className="text-rose-500">*</span>
+                  </label>
+                  <input 
+                    type="text"
+                    required
+                    value={eventForm.brideName}
+                    onChange={e => setEventForm({ ...eventForm, brideName: e.target.value })}
+                    className="w-full px-4 py-3 text-base sm:text-sm border border-[#E5DFD5] bg-[#FAF9F6] rounded-2xl focus:border-[#C5A059] focus:bg-white outline-none transition font-sans"
+                  />
+                </div>
+
+                <div>
+                  <label className="block text-[10px] sm:text-xs font-bold text-[#2D2D2D] uppercase tracking-[0.15em] mb-1.5">
+                    Nome do Noivo <span className="text-rose-500">*</span>
+                  </label>
+                  <input 
+                    type="text"
+                    required
+                    value={eventForm.groomName}
+                    onChange={e => setEventForm({ ...eventForm, groomName: e.target.value })}
+                    className="w-full px-4 py-3 text-base sm:text-sm border border-[#E5DFD5] bg-[#FAF9F6] rounded-2xl focus:border-[#C5A059] focus:bg-white outline-none transition font-sans"
+                  />
+                </div>
+              </div>
+
+              <div>
+                <label className="block text-[10px] sm:text-xs font-bold text-[#2D2D2D] uppercase tracking-[0.15em] mb-1.5">
+                  Título do Evento
+                </label>
+                <input 
+                  type="text"
+                  required
+                  value={eventForm.eventTitle}
+                  onChange={e => setEventForm({ ...eventForm, eventTitle: e.target.value })}
+                  className="w-full px-4 py-3 text-base sm:text-sm border border-[#E5DFD5] bg-[#FAF9F6] rounded-2xl focus:border-[#C5A059] focus:bg-white outline-none transition font-sans"
+                />
+              </div>
+
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                <div>
+                  <label className="block text-[10px] sm:text-xs font-bold text-[#2D2D2D] uppercase tracking-[0.15em] mb-1.5">
+                    Data do Chá de Panela
+                  </label>
+                  <input 
+                    type="date"
+                    required
+                    value={eventForm.date}
+                    onChange={e => setEventForm({ ...eventForm, date: e.target.value })}
+                    className="w-full px-4 py-3 text-base sm:text-sm border border-[#E5DFD5] bg-[#FAF9F6] rounded-2xl focus:border-[#C5A059] focus:bg-white outline-none transition font-sans"
+                  />
+                </div>
+
+                <div>
+                  <label className="block text-[10px] sm:text-xs font-bold text-[#2D2D2D] uppercase tracking-[0.15em] mb-1.5">
+                    Horário
+                  </label>
+                  <input 
+                    type="text"
+                    placeholder="Ex: 15:30"
+                    value={eventForm.time}
+                    onChange={e => setEventForm({ ...eventForm, time: e.target.value })}
+                    className="w-full px-4 py-3 text-base sm:text-sm border border-[#E5DFD5] bg-[#FAF9F6] rounded-2xl focus:border-[#C5A059] focus:bg-white outline-none transition font-sans"
+                  />
+                </div>
+              </div>
+
+              <div>
+                <label className="block text-[10px] sm:text-xs font-bold text-[#2D2D2D] uppercase tracking-[0.15em] mb-1.5">
+                  Endereço Completo
+                </label>
+                <input 
+                  type="text"
+                  value={eventForm.location}
+                  onChange={e => setEventForm({ ...eventForm, location: e.target.value })}
+                  className="w-full px-4 py-3 text-base sm:text-sm border border-[#E5DFD5] bg-[#FAF9F6] rounded-2xl focus:border-[#C5A059] focus:bg-white outline-none transition font-sans"
+                />
+              </div>
+
+              <div>
+                <label className="block text-[10px] sm:text-xs font-bold text-[#2D2D2D] uppercase tracking-[0.15em] mb-1.5">
+                  Link do Google Maps
+                </label>
+                <input 
+                  type="url"
+                  value={eventForm.googleMapsUrl}
+                  onChange={e => setEventForm({ ...eventForm, googleMapsUrl: e.target.value })}
+                  className="w-full px-4 py-3 text-base sm:text-sm border border-[#E5DFD5] bg-[#FAF9F6] rounded-2xl focus:border-[#C5A059] focus:bg-white outline-none transition font-sans"
+                />
+              </div>
+
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                <div>
+                  <label className="block text-[10px] sm:text-xs font-bold text-[#2D2D2D] uppercase tracking-[0.15em] mb-1.5">
+                    Chave PIX
+                  </label>
+                  <input 
+                    type="text"
+                    value={eventForm.pixKey}
+                    onChange={e => setEventForm({ ...eventForm, pixKey: e.target.value })}
+                    className="w-full px-4 py-3 text-base sm:text-sm border border-[#E5DFD5] bg-[#FAF9F6] rounded-2xl focus:border-[#C5A059] focus:bg-white outline-none transition font-sans"
+                  />
+                </div>
+
+                <div>
+                  <label className="block text-[10px] sm:text-xs font-bold text-[#2D2D2D] uppercase tracking-[0.15em] mb-1.5">
+                    Titular do PIX
+                  </label>
+                  <input 
+                    type="text"
+                    value={eventForm.pixName}
+                    onChange={e => setEventForm({ ...eventForm, pixName: e.target.value })}
+                    className="w-full px-4 py-3 text-base sm:text-sm border border-[#E5DFD5] bg-[#FAF9F6] rounded-2xl focus:border-[#C5A059] focus:bg-white outline-none transition font-sans"
+                  />
+                </div>
+              </div>
+
+              <div>
+                <label className="block text-[10px] sm:text-xs font-bold text-[#2D2D2D] uppercase tracking-[0.15em] mb-1.5">
+                  Mensagem de Boas-Vindas aos Convidados
+                </label>
+                <textarea 
+                  rows={3}
+                  value={eventForm.welcomeMessage}
+                  onChange={e => setEventForm({ ...eventForm, welcomeMessage: e.target.value })}
+                  className="w-full px-4 py-3 text-base sm:text-sm border border-[#E5DFD5] bg-[#FAF9F6] rounded-2xl focus:border-[#C5A059] focus:bg-white outline-none transition font-sans resize-none"
+                />
+              </div>
+
+              <div className="pt-3 border-t border-[#E5DFD5] flex items-center justify-end space-x-3 pb-2">
+                <button
+                  type="button"
+                  onClick={() => setIsCoupleDrawerOpen(false)}
+                  className="px-5 py-3 text-xs font-bold text-[#2D2D2D] hover:bg-[#F2ECE4] rounded-2xl transition"
+                >
+                  Cancelar
+                </button>
+                <button
+                  type="submit"
+                  disabled={settingsLoading}
+                  className="flex-1 sm:flex-initial px-6 py-3.5 text-xs font-bold uppercase tracking-[0.15em] text-white bg-[#2D2D2D] hover:bg-black active:scale-95 rounded-2xl shadow-xs flex items-center justify-center space-x-2 transition disabled:opacity-50"
+                >
+                  <Sparkles className="w-4 h-4 text-[#C5A059]" />
+                  <span>{settingsLoading ? 'Salvando...' : 'Salvar Dados do Casal'}</span>
+                </button>
+              </div>
+            </form>
+          </div>
+        </div>
+      )}
     </div>
   );
 };

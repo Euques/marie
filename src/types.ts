@@ -1,3 +1,11 @@
+export type AppRoute = 'home' | 'presentes' | 'login' | 'noiva';
+
+export interface GuestAuthSession {
+  name: string;
+  email: string;
+  provider: 'google' | 'email';
+}
+
 export type GiftCategory = 
   | 'Cozinha'
   | 'Mesa e Banho'

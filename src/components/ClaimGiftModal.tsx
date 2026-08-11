@@ -4,17 +4,26 @@ import { Gift as GiftIcon, X, Check, Heart, User, Phone, Mail, FileText } from '
 
 interface ClaimGiftModalProps {
   gift: Gift | null;
+  defaultGuestName?: string;
+  defaultGuestEmail?: string;
   onClose: () => void;
   onConfirm: (giftId: string, data: { guestName: string; guestEmail?: string; guestPhone?: string; notes?: string }) => Promise<void>;
 }
 
-export const ClaimGiftModal: React.FC<ClaimGiftModalProps> = ({ gift, onClose, onConfirm }) => {
-  const [guestName, setGuestName] = useState('');
-  const [guestEmail, setGuestEmail] = useState('');
+export const ClaimGiftModal: React.FC<ClaimGiftModalProps> = ({ gift, defaultGuestName = '', defaultGuestEmail = '', onClose, onConfirm }) => {
+  const [guestName, setGuestName] = useState(defaultGuestName);
+  const [guestEmail, setGuestEmail] = useState(defaultGuestEmail);
   const [guestPhone, setGuestPhone] = useState('');
   const [notes, setNotes] = useState('');
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
+
+  React.useEffect(() => {
+    if (gift) {
+      if (defaultGuestName) setGuestName(defaultGuestName);
+      if (defaultGuestEmail) setGuestEmail(defaultGuestEmail);
+    }
+  }, [gift, defaultGuestName, defaultGuestEmail]);
 
   if (!gift) return null;
 
@@ -43,22 +52,22 @@ export const ClaimGiftModal: React.FC<ClaimGiftModalProps> = ({ gift, onClose, o
   };
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-stone-900/60 backdrop-blur-xs animate-fade-in">
-      <div className="bg-white rounded-2xl shadow-xl max-w-lg w-full overflow-hidden border border-rose-100">
+    <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-[#2D2D2D]/60 backdrop-blur-xs animate-fade-in">
+      <div className="bg-white rounded-3xl shadow-xl max-w-lg w-full overflow-hidden border border-[#E5DFD5]">
         {/* Header */}
-        <div className="bg-rose-50/80 px-6 py-4 border-b border-rose-100 flex items-center justify-between">
-          <div className="flex items-center space-x-2">
-            <div className="p-2 bg-rose-100 text-rose-700 rounded-xl">
+        <div className="bg-[#FAF9F6] px-6 py-5 border-b border-[#E5DFD5] flex items-center justify-between">
+          <div className="flex items-center space-x-3">
+            <div className="p-2.5 bg-[#F2ECE4] text-[#C5A059] rounded-2xl shadow-2xs">
               <GiftIcon className="w-5 h-5" />
             </div>
             <div>
-              <h3 className="font-serif text-lg font-semibold text-stone-800">Escolher Presente</h3>
-              <p className="text-xs text-stone-500">Marque como escolhido por você</p>
+              <h3 className="text-lg font-bold text-[#2D2D2D]">Escolher Presente</h3>
+              <p className="text-xs text-[#2D2D2D]/60 font-sans">Marque como escolhido por você</p>
             </div>
           </div>
           <button 
             onClick={onClose}
-            className="text-stone-400 hover:text-stone-600 p-1.5 rounded-lg hover:bg-rose-100/50 transition"
+            className="text-[#2D2D2D]/40 hover:text-[#2D2D2D] p-2 rounded-xl hover:bg-[#F2ECE4] transition"
           >
             <X className="w-5 h-5" />
           </button>
@@ -66,16 +75,16 @@ export const ClaimGiftModal: React.FC<ClaimGiftModalProps> = ({ gift, onClose, o
 
         {/* Gift Summary Box */}
         <div className="px-6 pt-5 pb-2">
-          <div className="bg-rose-50/40 p-4 rounded-xl border border-rose-100/80">
-            <span className="text-xs font-semibold uppercase tracking-wider text-rose-600 bg-rose-100/60 px-2.5 py-0.5 rounded-full inline-block mb-1.5">
+          <div className="bg-[#FAF9F6] p-4 rounded-2xl border border-[#E5DFD5]">
+            <span className="text-[10px] font-bold uppercase tracking-[0.2em] text-[#C5A059] bg-[#F2ECE4] px-3 py-1 rounded-full inline-block mb-2">
               {gift.category}
             </span>
-            <h4 className="font-semibold text-stone-800 text-base">{gift.name}</h4>
+            <h4 className="font-bold text-[#2D2D2D] text-base">{gift.name}</h4>
             {gift.description && (
-              <p className="text-xs text-stone-600 mt-1">{gift.description}</p>
+              <p className="text-xs text-[#2D2D2D]/70 mt-1">{gift.description}</p>
             )}
             {gift.priceRange && (
-              <p className="text-xs text-rose-700/80 mt-1 font-medium">Faixa estimada: {gift.priceRange}</p>
+              <p className="text-xs text-[#C5A059] mt-1 font-medium">Faixa estimada: {gift.priceRange}</p>
             )}
           </div>
         </div>
@@ -83,96 +92,96 @@ export const ClaimGiftModal: React.FC<ClaimGiftModalProps> = ({ gift, onClose, o
         {/* Form */}
         <form onSubmit={handleSubmit} className="p-6 pt-3 space-y-4">
           {error && (
-            <div className="p-3 text-xs bg-rose-100 text-rose-800 rounded-lg border border-rose-200 font-medium">
+            <div className="p-3 text-xs bg-rose-50 text-rose-800 rounded-2xl border border-rose-200 font-bold">
               {error}
             </div>
           )}
 
           <div>
-            <label className="block text-xs font-semibold text-stone-700 uppercase tracking-wider mb-1">
+            <label className="block text-[10px] font-bold text-[#2D2D2D] uppercase tracking-[0.15em] mb-1.5">
               Seu Nome Completo <span className="text-rose-500">*</span>
             </label>
             <div className="relative">
-              <User className="w-4 h-4 text-stone-400 absolute left-3 top-3" />
+              <User className="w-4 h-4 text-[#2D2D2D]/40 absolute left-3.5 top-3.5" />
               <input 
                 type="text"
                 required
                 placeholder="Ex: Maria Silva"
                 value={guestName}
                 onChange={e => setGuestName(e.target.value)}
-                className="w-full pl-9 pr-3 py-2 text-sm border border-stone-200 rounded-xl focus:ring-2 focus:ring-rose-400 focus:border-rose-400 outline-none transition"
+                className="w-full pl-10 pr-4 py-2.5 text-sm border border-[#E5DFD5] bg-[#FAF9F6] rounded-2xl focus:border-[#C5A059] outline-none transition"
               />
             </div>
           </div>
 
           <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
             <div>
-              <label className="block text-xs font-semibold text-stone-700 uppercase tracking-wider mb-1">
+              <label className="block text-[10px] font-bold text-[#2D2D2D] uppercase tracking-[0.15em] mb-1.5">
                 WhatsApp / Celular
               </label>
               <div className="relative">
-                <Phone className="w-4 h-4 text-stone-400 absolute left-3 top-3" />
+                <Phone className="w-4 h-4 text-[#2D2D2D]/40 absolute left-3.5 top-3.5" />
                 <input 
                   type="tel"
                   placeholder="(11) 99999-9999"
                   value={guestPhone}
                   onChange={e => setGuestPhone(e.target.value)}
-                  className="w-full pl-9 pr-3 py-2 text-sm border border-stone-200 rounded-xl focus:ring-2 focus:ring-rose-400 outline-none transition"
+                  className="w-full pl-10 pr-4 py-2.5 text-sm border border-[#E5DFD5] bg-[#FAF9F6] rounded-2xl focus:border-[#C5A059] outline-none transition"
                 />
               </div>
             </div>
 
             <div>
-              <label className="block text-xs font-semibold text-stone-700 uppercase tracking-wider mb-1">
+              <label className="block text-[10px] font-bold text-[#2D2D2D] uppercase tracking-[0.15em] mb-1.5">
                 E-mail (Opcional)
               </label>
               <div className="relative">
-                <Mail className="w-4 h-4 text-stone-400 absolute left-3 top-3" />
+                <Mail className="w-4 h-4 text-[#2D2D2D]/40 absolute left-3.5 top-3.5" />
                 <input 
                   type="email"
                   placeholder="maria@email.com"
                   value={guestEmail}
                   onChange={e => setGuestEmail(e.target.value)}
-                  className="w-full pl-9 pr-3 py-2 text-sm border border-stone-200 rounded-xl focus:ring-2 focus:ring-rose-400 outline-none transition"
+                  className="w-full pl-10 pr-4 py-2.5 text-sm border border-[#E5DFD5] bg-[#FAF9F6] rounded-2xl focus:border-[#C5A059] outline-none transition"
                 />
               </div>
             </div>
           </div>
 
           <div>
-            <label className="block text-xs font-semibold text-stone-700 uppercase tracking-wider mb-1">
+            <label className="block text-[10px] font-bold text-[#2D2D2D] uppercase tracking-[0.15em] mb-1.5">
               Recadinho / Observação (Opcional)
             </label>
             <div className="relative">
-              <FileText className="w-4 h-4 text-stone-400 absolute left-3 top-3" />
+              <FileText className="w-4 h-4 text-[#2D2D2D]/40 absolute left-3.5 top-3.5" />
               <textarea 
                 rows={2}
                 placeholder="Ex: Já comprei e levarei no dia do chá! ❤️"
                 value={notes}
                 onChange={e => setNotes(e.target.value)}
-                className="w-full pl-9 pr-3 py-2 text-sm border border-stone-200 rounded-xl focus:ring-2 focus:ring-rose-400 outline-none transition resize-none"
+                className="w-full pl-10 pr-4 py-2.5 text-sm border border-[#E5DFD5] bg-[#FAF9F6] rounded-2xl focus:border-[#C5A059] outline-none transition resize-none"
               />
             </div>
           </div>
 
-          <div className="pt-2 flex items-center justify-end space-x-3">
+          <div className="pt-3 border-t border-[#E5DFD5] flex items-center justify-end space-x-3">
             <button
               type="button"
               onClick={onClose}
-              className="px-4 py-2 text-xs font-medium text-stone-600 hover:text-stone-800 rounded-xl hover:bg-stone-100 transition"
+              className="px-4 py-2.5 text-xs font-bold text-[#2D2D2D] hover:bg-[#F2ECE4] rounded-2xl transition"
             >
               Cancelar
             </button>
             <button
               type="submit"
               disabled={loading}
-              className="px-5 py-2.5 text-xs font-semibold text-white bg-rose-600 hover:bg-rose-700 active:bg-rose-800 rounded-xl shadow-md shadow-rose-200 flex items-center space-x-2 transition disabled:opacity-50"
+              className="px-6 py-3 text-[10px] font-bold uppercase tracking-[0.2em] text-white bg-[#2D2D2D] hover:bg-black active:scale-95 rounded-2xl shadow-xs flex items-center space-x-2 transition disabled:opacity-50"
             >
               {loading ? (
                 <span>Salvando...</span>
               ) : (
                 <>
-                  <Heart className="w-4 h-4 fill-current" />
+                  <Heart className="w-4 h-4 text-[#C5A059] fill-current" />
                   <span>Confirmar Escolha</span>
                 </>
               )}
