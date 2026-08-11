@@ -382,9 +382,25 @@ async function startServer() {
     app.use(vite.middlewares);
   } else {
     const distPath = path.join(process.cwd(), 'dist');
-    app.use(express.static(distPath));
+    if (fs.existsSync(distPath)) {
+      app.use(express.static(distPath));
+    }
     app.get('*', (req, res) => {
-      res.sendFile(path.join(distPath, 'index.html'));
+      // If the request is for an asset or script module, return 404 instead of index.html
+      // to prevent "Strict MIME type checking" errors in the browser when assets are missing or cached
+      const isAsset = req.path.startsWith('/assets/') || 
+                      req.path.startsWith('/src/') || 
+                      /\.(js|mjs|ts|tsx|css|json|png|jpg|jpeg|gif|svg|ico|woff|woff2|ttf|map)$/i.test(req.path);
+      if (isAsset) {
+        return res.status(404).type('text/plain').send('Asset not found');
+      }
+
+      const indexPath = path.join(distPath, 'index.html');
+      if (fs.existsSync(indexPath)) {
+        res.sendFile(indexPath);
+      } else {
+        res.status(404).send('Application build files not found.');
+      }
     });
   }
 
