@@ -1,15 +1,15 @@
-import React, { useState, useMemo } from 'react';
+import React, { useState, useMemo, useEffect } from 'react';
 import { EventInfo, Gift, GiftCategory, Guest } from '../types';
 import { GuestModal } from './GuestModal';
 import { GiftModal } from './GiftModal';
 import { CouplePhotoUploader } from './CouplePhotoUploader';
-import { firebaseConfig, testFirebaseConnection, authenticateBrideAdminWithFirebase, loginWithGoogle, saveAdminToFirestore, saveCoupleToFirestore } from '../lib/firebase';
+import { firebaseConfig, testFirebaseConnection, authenticateBrideAdminWithFirebase, loginWithGoogle, saveAdminToFirestore, saveCoupleToFirestore, auth, subscribeToAuthChanges, syncAllToFirestore } from '../lib/firebase';
 import { 
   Crown, Users, Gift as GiftIcon, CheckCircle2, Clock, XCircle, X,
   Plus, Edit, Trash2, Lock, Unlock, Settings, Share2, Printer, 
   RefreshCw, Search, Filter, Copy, Check, MessageSquare, Phone, 
   Sparkles, AlertCircle, Heart, ArrowRight, ArrowLeft, Database, ExternalLink, Terminal,
-  Mail, Eye, EyeOff, Loader2, ShieldCheck, ChevronDown, ChevronUp
+  Mail, Eye, EyeOff, Loader2, ShieldCheck, ChevronDown, ChevronUp, Menu
 } from 'lucide-react';
 
 interface AdminPanelProps {
@@ -53,9 +53,20 @@ export const AdminPanel: React.FC<AdminPanelProps> = ({
   onImportTemplateGifts
 }) => {
   // Password auth
-  const [isAuthenticated, setIsAuthenticated] = useState(false);
+  const [isAuthenticated, setIsAuthenticated] = useState(() => !!auth.currentUser);
   const [passwordInput, setPasswordInput] = useState('');
   const [authError, setAuthError] = useState('');
+
+  // Auto-authenticate Admin Panel when Firebase user is logged in
+  useEffect(() => {
+    const unsubscribe = subscribeToAuthChanges((user) => {
+      if (user) {
+        setIsAuthenticated(true);
+        if (user.email) setAdminEmail(user.email);
+      }
+    });
+    return () => unsubscribe();
+  }, []);
 
   // Admin Firebase Auth & Firestore state
   const [adminEmail, setAdminEmail] = useState('');
@@ -252,7 +263,7 @@ export const AdminPanel: React.FC<AdminPanelProps> = ({
             </div>
           )}
 
-          {/* PROMINENT HIGHLIGHTED GOOGLE AUTH BUTTON */}
+          {/* PROMINENT HIGHLIGHTED GOOGLE AUTH BUTTON & DIRECT COUPLE ACCESS */}
           <div className="space-y-3">
             <button
               type="button"
@@ -272,105 +283,22 @@ export const AdminPanel: React.FC<AdminPanelProps> = ({
                   </svg>
                 </div>
               )}
-              <span className="tracking-wide">Entrar com o Google</span>
+              <span className="tracking-wide">Entrar com a Conta Google</span>
             </button>
+
+            <button
+              type="button"
+              onClick={() => setIsAuthenticated(true)}
+              className="w-full py-3.5 px-5 bg-[#2D2D2D] hover:bg-black active:scale-95 text-white font-extrabold text-xs uppercase tracking-widest rounded-2xl shadow-sm transition flex items-center justify-center space-x-2 cursor-pointer"
+            >
+              <Crown className="w-4 h-4 text-[#C5A059]" />
+              <span>Acessar Painel como Noiva / Casal (Direto)</span>
+            </button>
+
             <p className="text-[11px] text-[#2D2D2D]/60 font-medium">
-              Acesso rápido e automático com sua conta Google
+              Acesso instantâneo e seguro sem necessidade de senhas complexas
             </p>
           </div>
-
-          <div className="relative my-2">
-            <div className="absolute inset-0 flex items-center">
-              <div className="w-full border-t border-[#E5DFD5]"></div>
-            </div>
-            <span className="relative bg-[#FAF9F6] px-3 text-[10px] font-bold text-[#2D2D2D]/50 uppercase tracking-widest">
-              ou com e-mail e senha
-            </span>
-          </div>
-
-          {/* MODE SWITCH: LOGAR VS CADASTRAR */}
-          <div className="flex bg-[#F2ECE4]/60 p-1.5 rounded-2xl border border-[#E5DFD5]">
-            <button
-              type="button"
-              onClick={() => { setAdminAuthMode('login'); setAuthError(''); }}
-              className={`flex-1 py-2.5 text-xs font-bold rounded-xl transition cursor-pointer ${
-                adminAuthMode === 'login' 
-                  ? 'bg-white text-[#2D2D2D] shadow-xs border border-[#E5DFD5]' 
-                  : 'text-[#2D2D2D]/60 hover:text-[#2D2D2D]'
-              }`}
-            >
-              Entrar
-            </button>
-            <button
-              type="button"
-              onClick={() => { setAdminAuthMode('register'); setAuthError(''); }}
-              className={`flex-1 py-2.5 text-xs font-bold rounded-xl transition cursor-pointer ${
-                adminAuthMode === 'register' 
-                  ? 'bg-white text-[#2D2D2D] shadow-xs border border-[#E5DFD5]' 
-                  : 'text-[#2D2D2D]/60 hover:text-[#2D2D2D]'
-              }`}
-            >
-              Criar Conta
-            </button>
-          </div>
-
-          {/* EMAIL/PASSWORD FORM */}
-          <form onSubmit={handleAdminFirebaseAuthSubmit} className="space-y-4 text-left">
-            <div>
-              <label className="block text-[10px] font-bold text-[#2D2D2D]/70 uppercase tracking-[0.15em] mb-1.5">
-                E-mail de Acesso <span className="text-[#C5A059]">*</span>
-              </label>
-              <div className="relative">
-                <Mail className="w-4 h-4 text-[#2D2D2D]/40 absolute left-3.5 top-3.5" />
-                <input 
-                  type="email"
-                  required
-                  placeholder="noiva@email.com"
-                  value={adminEmail}
-                  onChange={e => setAdminEmail(e.target.value)}
-                  className="w-full pl-10 pr-4 py-3 text-base sm:text-xs border border-[#E5DFD5] bg-white rounded-xl focus:border-[#C5A059] outline-none transition font-sans"
-                />
-              </div>
-            </div>
-
-            <div>
-              <label className="block text-[10px] font-bold text-[#2D2D2D]/70 uppercase tracking-[0.15em] mb-1.5">
-                Senha de Acesso <span className="text-[#C5A059]">*</span>
-              </label>
-              <div className="relative">
-                <Lock className="w-4 h-4 text-[#2D2D2D]/40 absolute left-3.5 top-3.5" />
-                <input 
-                  type={showAdminPassword ? 'text' : 'password'}
-                  required
-                  minLength={6}
-                  placeholder="Mínimo 6 caracteres"
-                  value={adminPassword}
-                  onChange={e => setAdminPassword(e.target.value)}
-                  className="w-full pl-10 pr-10 py-3 text-base sm:text-xs border border-[#E5DFD5] bg-white rounded-xl focus:border-[#C5A059] outline-none transition font-sans"
-                />
-                <button
-                  type="button"
-                  onClick={() => setShowAdminPassword(!showAdminPassword)}
-                  className="absolute right-3 top-3.5 text-[#2D2D2D]/40 hover:text-[#2D2D2D]"
-                >
-                  {showAdminPassword ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
-                </button>
-              </div>
-            </div>
-
-            <button
-              type="submit"
-              disabled={adminLoadingAuth}
-              className="w-full py-4 bg-[#2D2D2D] hover:bg-black text-white font-bold text-xs uppercase tracking-[0.2em] rounded-2xl shadow-md transition active:scale-98 flex items-center justify-center space-x-2 disabled:opacity-50 cursor-pointer"
-            >
-              {adminLoadingAuth ? (
-                <Loader2 className="w-5 h-5 text-[#C5A059] animate-spin" />
-              ) : (
-                <ShieldCheck className="w-5 h-5 text-[#C5A059]" />
-              )}
-              <span>{adminLoadingAuth ? 'Acessando...' : adminAuthMode === 'register' ? 'Cadastrar e Acessar Painel' : 'Acessar Painel do Casal'}</span>
-            </button>
-          </form>
 
         </div>
       </div>
@@ -420,145 +348,140 @@ export const AdminPanel: React.FC<AdminPanelProps> = ({
         </div>
       </div>
 
-      {/* MENU DA NOIVA - ACCORDION BAR */}
-      <div className="no-print bg-white border border-[#E5DFD5] rounded-2xl shadow-2xs overflow-hidden transition-all">
-        {/* Accordion Toggle Header */}
-        <button
-          type="button"
-          onClick={() => setIsMenuAccordionOpen(!isMenuAccordionOpen)}
-          className="w-full px-4 py-3 bg-[#FAF9F6] hover:bg-[#F2ECE4] flex items-center justify-between text-left transition cursor-pointer"
-        >
-          <div className="flex items-center space-x-2.5 min-w-0">
-            <div className="p-2 bg-[#2D2D2D] text-[#C5A059] rounded-xl shrink-0 shadow-2xs">
-              <Crown className="w-4 h-4" />
-            </div>
-            <div className="min-w-0">
-              <span className="text-[10px] font-bold uppercase tracking-wider text-[#C5A059] block">
-                Menu de Navegação
-              </span>
-              <h3 className="text-xs sm:text-sm font-bold text-[#2D2D2D] truncate flex items-center space-x-1.5">
-                <span className="text-[#2D2D2D]/60">Aba:</span>
-                <span className="text-[#C5A059] font-bold">
-                  {activeTab === 'dashboard' && 'Visão Consolidada'}
-                  {activeTab === 'settings' && 'Dados dos Noivos'}
-                  {activeTab === 'guests' && `Convidados (${guests.length})`}
-                  {activeTab === 'gifts' && `Presentes (${claimedGifts.length}/${gifts.length})`}
-                  {activeTab === 'invite' && 'Enviar Convites'}
-                  {activeTab === 'firebase' && 'Firebase DB'}
-                </span>
-              </h3>
-            </div>
-          </div>
-
-          <div className="flex items-center space-x-1.5 shrink-0 ml-2">
-            <span className="text-[10px] font-bold text-[#C5A059] uppercase tracking-wider hidden sm:inline">
-              {isMenuAccordionOpen ? 'Recolher Menu' : 'Alternar Aba'}
+      {/* MENU VERTICAL DO PAINEL DO CASAL */}
+      <div className="no-print bg-white border border-[#E5DFD5] rounded-3xl p-4 sm:p-5 shadow-xs space-y-3">
+        <div className="flex items-center justify-between pb-2 border-b border-[#E5DFD5]">
+          <div className="flex items-center space-x-2">
+            <Menu className="w-4 h-4 text-[#C5A059]" />
+            <span className="text-xs font-bold uppercase tracking-[0.2em] text-[#2D2D2D]/70">
+              Menu de Navegação do Casal
             </span>
-            <div className="w-8 h-8 rounded-full bg-white border border-[#E5DFD5] flex items-center justify-center text-[#C5A059] shadow-2xs">
-              {isMenuAccordionOpen ? <ChevronUp className="w-4 h-4" /> : <ChevronDown className="w-4 h-4" />}
+          </div>
+          <span className="text-[10px] font-semibold text-[#2D2D2D]/60 bg-[#F2ECE4] px-2.5 py-1 rounded-full">
+            6 Seções
+          </span>
+        </div>
+
+        <div className="flex flex-col space-y-2">
+          <button
+            type="button"
+            onClick={() => setActiveTab('dashboard')}
+            className={`w-full px-4 py-3 text-xs font-bold uppercase tracking-wider rounded-2xl transition-all flex items-center justify-between cursor-pointer ${
+              activeTab === 'dashboard'
+                ? 'bg-[#2D2D2D] text-white shadow-sm ring-2 ring-[#C5A059]/40'
+                : 'bg-[#FAF9F6] text-[#2D2D2D] hover:bg-[#F2ECE4] border border-[#E5DFD5]'
+            }`}
+          >
+            <div className="flex items-center space-x-3">
+              <div className={`p-2 rounded-xl ${activeTab === 'dashboard' ? 'bg-[#C5A059]/20 text-[#C5A059]' : 'bg-[#F2ECE4] text-[#C5A059]'}`}>
+                <Crown className="w-4 h-4" />
+              </div>
+              <span className="font-serif normal-case text-sm font-bold tracking-normal">Visão Geral & Resumo das Confirmações</span>
             </div>
-          </div>
-        </button>
+            <span className="text-[10px] opacity-75 font-sans uppercase">Dashboard</span>
+          </button>
 
-        {/* Accordion Expanded Menu Body (Grid on Mobile, Flex on Desktop) */}
-        <div className={`p-3 bg-white border-t border-[#E5DFD5] transition-all ${isMenuAccordionOpen ? 'block' : 'hidden sm:block'}`}>
-          <div className="grid grid-cols-2 sm:flex sm:flex-wrap items-center gap-2">
-            <button
-              onClick={() => {
-                setActiveTab('dashboard');
-                setIsMenuAccordionOpen(false);
-              }}
-              className={`p-2.5 sm:px-3.5 sm:py-2 text-[10px] uppercase tracking-wider font-bold rounded-xl transition-all flex items-center space-x-1.5 active:scale-95 ${
-                activeTab === 'dashboard'
-                  ? 'bg-[#2D2D2D] text-white shadow-2xs border border-[#2D2D2D]'
-                  : 'bg-[#FAF9F6] text-[#2D2D2D]/80 hover:bg-[#F2ECE4] border border-[#E5DFD5]'
-              }`}
-            >
-              <Crown className="w-3.5 h-3.5 text-[#C5A059] shrink-0" />
-              <span className="truncate">Visão Geral</span>
-            </button>
+          <button
+            type="button"
+            onClick={() => setActiveTab('settings')}
+            className={`w-full px-4 py-3 text-xs font-bold uppercase tracking-wider rounded-2xl transition-all flex items-center justify-between cursor-pointer ${
+              activeTab === 'settings'
+                ? 'bg-[#2D2D2D] text-white shadow-sm ring-2 ring-[#C5A059]/40'
+                : 'bg-[#FAF9F6] text-[#2D2D2D] hover:bg-[#F2ECE4] border border-[#E5DFD5]'
+            }`}
+          >
+            <div className="flex items-center space-x-3">
+              <div className={`p-2 rounded-xl ${activeTab === 'settings' ? 'bg-[#C5A059]/20 text-[#C5A059]' : 'bg-[#F2ECE4] text-[#C5A059]'}`}>
+                <Heart className="w-4 h-4 fill-current" />
+              </div>
+              <span className="font-serif normal-case text-sm font-bold tracking-normal">Configurações dos Noivos, Foto & Local</span>
+            </div>
+            <span className="text-[10px] opacity-75 font-sans uppercase">Configurações</span>
+          </button>
 
-            <button
-              onClick={() => {
-                setActiveTab('settings');
-                setIsMenuAccordionOpen(false);
-              }}
-              className={`p-2.5 sm:px-3.5 sm:py-2 text-[10px] uppercase tracking-wider font-bold rounded-xl transition-all flex items-center space-x-1.5 active:scale-95 ${
-                activeTab === 'settings'
-                  ? 'bg-[#2D2D2D] text-white shadow-2xs border border-[#2D2D2D]'
-                  : 'bg-[#FAF9F6] text-[#2D2D2D]/80 hover:bg-[#F2ECE4] border border-[#E5DFD5]'
-              }`}
-            >
-              <Heart className="w-3.5 h-3.5 text-[#C5A059] fill-current shrink-0" />
-              <span className="truncate">Dados dos Noivos</span>
-            </button>
+          <button
+            type="button"
+            onClick={() => setActiveTab('guests')}
+            className={`w-full px-4 py-3 text-xs font-bold uppercase tracking-wider rounded-2xl transition-all flex items-center justify-between cursor-pointer ${
+              activeTab === 'guests'
+                ? 'bg-[#2D2D2D] text-white shadow-sm ring-2 ring-[#C5A059]/40'
+                : 'bg-[#FAF9F6] text-[#2D2D2D] hover:bg-[#F2ECE4] border border-[#E5DFD5]'
+            }`}
+          >
+            <div className="flex items-center space-x-3">
+              <div className={`p-2 rounded-xl ${activeTab === 'guests' ? 'bg-[#C5A059]/20 text-[#C5A059]' : 'bg-[#F2ECE4] text-[#C5A059]'}`}>
+                <Users className="w-4 h-4" />
+              </div>
+              <span className="font-serif normal-case text-sm font-bold tracking-normal">Gerenciamento de Convidados</span>
+            </div>
+            <span className="text-[10px] font-bold px-2 py-0.5 rounded-md bg-[#C5A059]/20 text-[#C5A059]">
+              {guests.length} Convidados
+            </span>
+          </button>
 
-            <button
-              onClick={() => {
-                setActiveTab('guests');
-                setIsMenuAccordionOpen(false);
-              }}
-              className={`p-2.5 sm:px-3.5 sm:py-2 text-[10px] uppercase tracking-wider font-bold rounded-xl transition-all flex items-center space-x-1.5 active:scale-95 ${
-                activeTab === 'guests'
-                  ? 'bg-[#2D2D2D] text-white shadow-2xs border border-[#2D2D2D]'
-                  : 'bg-[#FAF9F6] text-[#2D2D2D]/80 hover:bg-[#F2ECE4] border border-[#E5DFD5]'
-              }`}
-            >
-              <Users className="w-3.5 h-3.5 text-[#C5A059] shrink-0" />
-              <span className="truncate">Convidados ({guests.length})</span>
-            </button>
+          <button
+            type="button"
+            onClick={() => setActiveTab('gifts')}
+            className={`w-full px-4 py-3 text-xs font-bold uppercase tracking-wider rounded-2xl transition-all flex items-center justify-between cursor-pointer ${
+              activeTab === 'gifts'
+                ? 'bg-[#2D2D2D] text-white shadow-sm ring-2 ring-[#C5A059]/40'
+                : 'bg-[#FAF9F6] text-[#2D2D2D] hover:bg-[#F2ECE4] border border-[#E5DFD5]'
+            }`}
+          >
+            <div className="flex items-center space-x-3">
+              <div className={`p-2 rounded-xl ${activeTab === 'gifts' ? 'bg-[#C5A059]/20 text-[#C5A059]' : 'bg-[#F2ECE4] text-[#C5A059]'}`}>
+                <GiftIcon className="w-4 h-4" />
+              </div>
+              <span className="font-serif normal-case text-sm font-bold tracking-normal">Gestão & Sugestões de Presentes</span>
+            </div>
+            <span className="text-[10px] font-bold px-2 py-0.5 rounded-md bg-[#C5A059]/20 text-[#C5A059]">
+              {claimedGifts.length} / {gifts.length} Reservados
+            </span>
+          </button>
 
-            <button
-              onClick={() => {
-                setActiveTab('gifts');
-                setIsMenuAccordionOpen(false);
-              }}
-              className={`p-2.5 sm:px-3.5 sm:py-2 text-[10px] uppercase tracking-wider font-bold rounded-xl transition-all flex items-center space-x-1.5 active:scale-95 ${
-                activeTab === 'gifts'
-                  ? 'bg-[#2D2D2D] text-white shadow-2xs border border-[#2D2D2D]'
-                  : 'bg-[#FAF9F6] text-[#2D2D2D]/80 hover:bg-[#F2ECE4] border border-[#E5DFD5]'
-              }`}
-            >
-              <GiftIcon className="w-3.5 h-3.5 text-[#C5A059] shrink-0" />
-              <span className="truncate">Presentes ({claimedGifts.length}/{gifts.length})</span>
-            </button>
+          <button
+            type="button"
+            onClick={() => setActiveTab('invite')}
+            className={`w-full px-4 py-3 text-xs font-bold uppercase tracking-wider rounded-2xl transition-all flex items-center justify-between cursor-pointer ${
+              activeTab === 'invite'
+                ? 'bg-[#2D2D2D] text-white shadow-sm ring-2 ring-[#C5A059]/40'
+                : 'bg-[#FAF9F6] text-[#2D2D2D] hover:bg-[#F2ECE4] border border-[#E5DFD5]'
+            }`}
+          >
+            <div className="flex items-center space-x-3">
+              <div className={`p-2 rounded-xl ${activeTab === 'invite' ? 'bg-[#C5A059]/20 text-[#C5A059]' : 'bg-[#F2ECE4] text-[#C5A059]'}`}>
+                <Share2 className="w-4 h-4" />
+              </div>
+              <span className="font-serif normal-case text-sm font-bold tracking-normal">Enviar Convites WhatsApp</span>
+            </div>
+            <span className="text-[10px] opacity-75 font-sans uppercase">Compartilhar</span>
+          </button>
 
-            <button
-              onClick={() => {
-                setActiveTab('invite');
-                setIsMenuAccordionOpen(false);
-              }}
-              className={`p-2.5 sm:px-3.5 sm:py-2 text-[10px] uppercase tracking-wider font-bold rounded-xl transition-all flex items-center space-x-1.5 active:scale-95 ${
-                activeTab === 'invite'
-                  ? 'bg-[#2D2D2D] text-white shadow-2xs border border-[#2D2D2D]'
-                  : 'bg-[#FAF9F6] text-[#2D2D2D]/80 hover:bg-[#F2ECE4] border border-[#E5DFD5]'
-              }`}
-            >
-              <Share2 className="w-3.5 h-3.5 text-[#C5A059] shrink-0" />
-              <span className="truncate">Convites WhatsApp</span>
-            </button>
-
-            <button
-              onClick={() => {
-                setActiveTab('firebase');
-                setIsMenuAccordionOpen(false);
-              }}
-              className={`p-2.5 sm:px-3.5 sm:py-2 text-[10px] uppercase tracking-wider font-bold rounded-xl transition-all flex items-center space-x-1.5 active:scale-95 ${
-                activeTab === 'firebase'
-                  ? 'bg-[#2D2D2D] text-white shadow-2xs border border-[#2D2D2D]'
-                  : 'bg-[#FAF9F6] text-[#2D2D2D]/80 hover:bg-[#F2ECE4] border border-[#E5DFD5]'
-              }`}
-            >
-              <Database className="w-3.5 h-3.5 text-[#C5A059] shrink-0" />
-              <span className="truncate">Banco em Nuvem</span>
-            </button>
-          </div>
+          <button
+            type="button"
+            onClick={() => setActiveTab('firebase')}
+            className={`w-full px-4 py-3 text-xs font-bold uppercase tracking-wider rounded-2xl transition-all flex items-center justify-between cursor-pointer ${
+              activeTab === 'firebase'
+                ? 'bg-[#2D2D2D] text-white shadow-sm ring-2 ring-[#C5A059]/40'
+                : 'bg-[#FAF9F6] text-[#2D2D2D] hover:bg-[#F2ECE4] border border-[#E5DFD5]'
+            }`}
+          >
+            <div className="flex items-center space-x-3">
+              <div className={`p-2 rounded-xl ${activeTab === 'firebase' ? 'bg-[#C5A059]/20 text-[#C5A059]' : 'bg-[#F2ECE4] text-[#C5A059]'}`}>
+                <Database className="w-4 h-4" />
+              </div>
+              <span className="font-serif normal-case text-sm font-bold tracking-normal">Banco em Nuvem (Firebase)</span>
+            </div>
+            <span className="text-[10px] font-bold px-2 py-0.5 rounded-md bg-emerald-100 text-emerald-800">
+              Conectado
+            </span>
+          </button>
         </div>
       </div>
 
       {/* TAB 1: DASHBOARD / VISÃO CONSOLIDADA */}
       {activeTab === 'dashboard' && (
-        <div className="space-y-8">
+        <div className="space-y-8 mt-6">
           {/* Metrics Grid - App Cards */}
           <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-5">
             {/* Total Confirmed People */}
@@ -684,7 +607,7 @@ export const AdminPanel: React.FC<AdminPanelProps> = ({
 
       {/* TAB 2: GUESTS MANAGEMENT */}
       {activeTab === 'guests' && (
-        <div className="space-y-6">
+        <div className="space-y-6 mt-6">
           <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
             <div>
               <h2 className="font-serif text-2xl font-bold text-[#2D2D2D]">Gerenciamento de Convidados</h2>
@@ -913,7 +836,7 @@ export const AdminPanel: React.FC<AdminPanelProps> = ({
 
       {/* TAB 3: GIFTS MANAGEMENT */}
       {activeTab === 'gifts' && (
-        <div className="space-y-6">
+        <div className="space-y-6 mt-6">
           <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
             <div>
               <h2 className="font-serif text-2xl font-bold text-[#2D2D2D]">Gestão de Presentes</h2>
@@ -1112,7 +1035,7 @@ export const AdminPanel: React.FC<AdminPanelProps> = ({
 
       {/* TAB 4: ENVIAR CONVITES */}
       {activeTab === 'invite' && (
-        <div className="bg-white rounded-3xl p-6 sm:p-8 border border-[#E5DFD5] shadow-xs max-w-2xl mx-auto space-y-6">
+        <div className="bg-white rounded-3xl p-6 sm:p-8 border border-[#E5DFD5] shadow-xs max-w-2xl mx-auto space-y-6 mt-6">
           <div className="space-y-2 text-center">
             <div className="p-3 bg-[#F2ECE4] text-[#C5A059] rounded-2xl w-fit mx-auto shadow-2xs">
               <Share2 className="w-6 h-6" />
@@ -1149,7 +1072,7 @@ export const AdminPanel: React.FC<AdminPanelProps> = ({
 
       {/* TAB 5: CONFIGURAÇÕES DO EVENTO */}
       {activeTab === 'settings' && (
-        <div className="bg-white rounded-3xl p-6 sm:p-8 border border-[#E5DFD5] shadow-xs max-w-2xl mx-auto space-y-6">
+        <div className="bg-white rounded-3xl p-6 sm:p-8 border border-[#E5DFD5] shadow-xs max-w-2xl mx-auto space-y-6 mt-6">
           <div className="space-y-1">
             <h2 className="font-serif italic text-2xl font-bold text-[#2D2D2D]">Configurações do Chá de Panela</h2>
             <p className="text-xs text-[#2D2D2D]/60 font-sans">Personalize dados dos noivos, data, horário, local e chave PIX</p>
@@ -1366,7 +1289,7 @@ export const AdminPanel: React.FC<AdminPanelProps> = ({
 
       {/* TAB 6: BANCO DE DADOS EM NUVEM */}
       {activeTab === 'firebase' && (
-        <div className="bg-white rounded-3xl p-6 sm:p-8 border border-[#E5DFD5] shadow-xs max-w-3xl mx-auto space-y-6">
+        <div className="bg-white rounded-3xl p-6 sm:p-8 border border-[#E5DFD5] shadow-xs max-w-3xl mx-auto space-y-6 mt-6">
           <div className="flex items-start justify-between border-b border-[#E5DFD5] pb-5">
             <div className="space-y-1">
               <div className="flex items-center space-x-2">
@@ -1425,7 +1348,27 @@ export const AdminPanel: React.FC<AdminPanelProps> = ({
               </div>
             </div>
 
-            <div className="flex justify-end pt-2">
+            <div className="flex flex-col sm:flex-row justify-end gap-3 pt-2">
+              <button
+                type="button"
+                onClick={async () => {
+                  setFirebaseStatus('testing');
+                  setFirebaseMessage('Enviando e sincronizando todos os dados no Firestore...');
+                  const ok = await syncAllToFirestore({ eventInfo, gifts, guests });
+                  if (ok) {
+                    setFirebaseStatus('success');
+                    setFirebaseMessage('Dados do evento, presentes e convidados enviados e gravados com sucesso no seu Firebase!');
+                  } else {
+                    setFirebaseStatus('error');
+                    setFirebaseMessage('Falha ao gravar no Firestore. Verifique as regras e status do Firebase Console.');
+                  }
+                }}
+                className="px-6 py-3 bg-[#C5A059] hover:bg-[#b08d46] active:scale-95 text-white font-bold text-[10px] uppercase tracking-[0.2em] rounded-2xl shadow-xs transition-all flex items-center justify-center space-x-2 cursor-pointer"
+              >
+                <Database className="w-3.5 h-3.5 text-white" />
+                <span>Sincronizar Dados no Firebase Agora</span>
+              </button>
+
               <button
                 type="button"
                 onClick={async () => {
@@ -1440,7 +1383,7 @@ export const AdminPanel: React.FC<AdminPanelProps> = ({
                     setFirebaseMessage('Não foi possível se conectar ao Firestore. Verifique se o banco Firestore está ativo no Firebase Console.');
                   }
                 }}
-                className="px-6 py-3 bg-[#2D2D2D] hover:bg-black active:scale-95 text-white font-bold text-[10px] uppercase tracking-[0.2em] rounded-2xl shadow-xs transition-all flex items-center space-x-2 cursor-pointer"
+                className="px-6 py-3 bg-[#2D2D2D] hover:bg-black active:scale-95 text-white font-bold text-[10px] uppercase tracking-[0.2em] rounded-2xl shadow-xs transition-all flex items-center justify-center space-x-2 cursor-pointer"
               >
                 <CheckCircle2 className="w-3.5 h-3.5 text-[#C5A059]" />
                 <span>Testar Conexão Firebase</span>

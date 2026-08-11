@@ -1,5 +1,6 @@
 import React, { useState, useRef } from 'react';
 import { Upload, Image as ImageIcon, Camera, Trash2, Check, Link as LinkIcon, Sparkles, RefreshCw } from 'lucide-react';
+import { uploadPhotoToStorage } from '../lib/firebase';
 
 interface CouplePhotoUploaderProps {
   currentPhotoUrl?: string;
@@ -30,7 +31,7 @@ export const CouplePhotoUploader: React.FC<CouplePhotoUploaderProps> = ({
   const [isProcessing, setIsProcessing] = useState(false);
   const fileInputRef = useRef<HTMLInputElement>(null);
 
-  const handleFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+  const handleFileChange = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
     if (!file) return;
 
@@ -41,48 +42,89 @@ export const CouplePhotoUploader: React.FC<CouplePhotoUploaderProps> = ({
 
     setIsProcessing(true);
 
-    const reader = new FileReader();
-    reader.onload = (event) => {
-      const img = new Image();
-      img.onload = () => {
-        // Resize large images on canvas to optimize size
-        const canvas = document.createElement('canvas');
-        let width = img.width;
-        let height = img.height;
-        const MAX_SIZE = 1000;
-
-        if (width > height) {
-          if (width > MAX_SIZE) {
-            height *= MAX_SIZE / width;
-            width = MAX_SIZE;
-          }
-        } else {
-          if (height > MAX_SIZE) {
-            width *= MAX_SIZE / height;
-            height = MAX_SIZE;
-          }
+    try {
+      const reader = new FileReader();
+      reader.onload = async (event) => {
+        const rawDataUrl = event.target?.result as string;
+        if (!rawDataUrl) {
+          setIsProcessing(false);
+          return;
         }
 
-        canvas.width = width;
-        canvas.height = height;
-        const ctx = canvas.getContext('2d');
-        if (ctx) {
-          ctx.drawImage(img, 0, 0, width, height);
-          const dataUrl = canvas.toDataURL('image/jpeg', 0.85);
-          onPhotoChange(dataUrl);
-        } else {
-          onPhotoChange(event.target?.result as string);
-        }
-        setIsProcessing(false);
-      };
-      img.onerror = () => {
-        setIsProcessing(false);
-        alert('Erro ao carregar imagem. Tente outro arquivo.');
-      };
-      img.src = event.target?.result as string;
-    };
+        // Optimize image on Canvas first
+        const img = new Image();
+        img.onload = async () => {
+          const canvas = document.createElement('canvas');
+          let width = img.width;
+          let height = img.height;
+          const MAX_SIZE = 1200;
 
-    reader.readAsDataURL(file);
+          if (width > height) {
+            if (width > MAX_SIZE) {
+              height *= MAX_SIZE / width;
+              width = MAX_SIZE;
+            }
+          } else {
+            if (height > MAX_SIZE) {
+              width *= MAX_SIZE / height;
+              height = MAX_SIZE;
+            }
+          }
+
+          canvas.width = width;
+          canvas.height = height;
+          const ctx = canvas.getContext('2d');
+          let optimizedDataUrl = rawDataUrl;
+          if (ctx) {
+            ctx.drawImage(img, 0, 0, width, height);
+            optimizedDataUrl = canvas.toDataURL('image/jpeg', 0.85);
+          }
+
+          // 1. Primary: Upload to Firebase Storage
+          try {
+            const firebaseStorageUrl = await uploadPhotoToStorage(optimizedDataUrl, 'couples');
+            if (firebaseStorageUrl) {
+              onPhotoChange(firebaseStorageUrl);
+              setIsProcessing(false);
+              return;
+            }
+          } catch (storageErr) {
+            console.warn('Tentativa direta no Firebase Storage falhou. Tentando upload no servidor /api/upload:', storageErr);
+          }
+
+          // 2. Secondary fallback: /api/upload
+          try {
+            const res = await fetch('/api/upload', {
+              method: 'POST',
+              headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify({ image: optimizedDataUrl, fileName: file.name })
+            });
+
+            if (res.ok) {
+              const data = await res.json();
+              if (data.url) {
+                onPhotoChange(data.url);
+                setIsProcessing(false);
+                return;
+              }
+            }
+          } catch (serverErr) {
+            console.warn('Erro ao salvar em /api/upload, usando data URL:', serverErr);
+          }
+
+          // 3. Fallback: optimized Data URL
+          onPhotoChange(optimizedDataUrl);
+          setIsProcessing(false);
+        };
+        img.src = rawDataUrl;
+      };
+
+      reader.readAsDataURL(file);
+    } catch (err) {
+      console.error('Erro geral no upload da foto:', err);
+      setIsProcessing(false);
+      alert('Erro ao processar imagem. Tente novamente.');
+    }
   };
 
   const handleApplyUrl = (e: React.FormEvent) => {

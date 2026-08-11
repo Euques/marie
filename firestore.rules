@@ -1,0 +1,24 @@
+rules_version = '2';
+service cloud.firestore {
+  match /databases/{database}/documents {
+    // Permitir leitura pública dos dados do evento, presentes e convidados
+    match /event_info/{document=**} {
+      allow read, write: if true;
+    }
+    match /gifts/{document=**} {
+      allow read, write: if true;
+    }
+    match /guests/{document=**} {
+      allow read, write: if true;
+    }
+    match /couples/{document=**} {
+      allow read, write: if true;
+    }
+    match /admins/{document=**} {
+      allow read, write: if true;
+    }
+    match /test/{document=**} {
+      allow read, write: if true;
+    }
+  }
+}

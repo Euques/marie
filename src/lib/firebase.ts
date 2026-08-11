@@ -1,5 +1,16 @@
 import { initializeApp, getApps, getApp } from 'firebase/app';
-import { getFirestore, doc, getDocFromServer } from 'firebase/firestore';
+import { 
+  getFirestore, 
+  doc, 
+  setDoc, 
+  getDoc, 
+  getDocFromServer, 
+  collection, 
+  getDocs, 
+  deleteDoc, 
+  onSnapshot 
+} from 'firebase/firestore';
+import { getStorage, ref as storageRef, uploadBytes, uploadString, getDownloadURL } from 'firebase/storage';
 import { 
   getAuth, 
   signInWithEmailAndPassword, 
@@ -11,6 +22,7 @@ import {
   onAuthStateChanged,
   User as FirebaseUser
 } from 'firebase/auth';
+import { EventInfo, Gift, Guest } from '../types';
 
 export const firebaseConfig = {
   apiKey: "AIzaSyAP5OXrafFgZ0vZRUfdgl7zw3EOJJs0bwk",
@@ -25,6 +37,56 @@ export const firebaseConfig = {
 export const app = getApps().length > 0 ? getApp() : initializeApp(firebaseConfig);
 export const db = getFirestore(app);
 export const auth = getAuth(app);
+export const storage = getStorage(app);
+
+// Error handling standard per Firebase skill
+export enum OperationType {
+  CREATE = 'create',
+  UPDATE = 'update',
+  DELETE = 'delete',
+  LIST = 'list',
+  GET = 'get',
+  WRITE = 'write',
+}
+
+export function handleFirestoreError(error: unknown, operationType: OperationType, path: string | null) {
+  const errInfo = {
+    error: error instanceof Error ? error.message : String(error),
+    authInfo: {
+      userId: auth.currentUser?.uid,
+      email: auth.currentUser?.email,
+      emailVerified: auth.currentUser?.emailVerified,
+      isAnonymous: auth.currentUser?.isAnonymous,
+    },
+    operationType,
+    path
+  };
+  console.error('Firestore Error:', JSON.stringify(errInfo));
+}
+
+// Upload Photo directly to Firebase Storage
+export async function uploadPhotoToStorage(fileOrBase64: File | string, folder: string = 'couples'): Promise<string> {
+  const uid = auth.currentUser?.uid || 'guest';
+  const fileName = `photo_${Date.now()}_${Math.random().toString(36).substring(2, 7)}.jpg`;
+  const fileReference = storageRef(storage, `${folder}/${uid}/${fileName}`);
+
+  try {
+    if (typeof fileOrBase64 === 'string') {
+      // Base64 data string
+      const snapshot = await uploadString(fileReference, fileOrBase64, 'data_url');
+      const downloadUrl = await getDownloadURL(snapshot.ref);
+      return downloadUrl;
+    } else {
+      // File object
+      const snapshot = await uploadBytes(fileReference, fileOrBase64);
+      const downloadUrl = await getDownloadURL(snapshot.ref);
+      return downloadUrl;
+    }
+  } catch (error) {
+    console.warn('Firebase Storage direct upload notice:', error);
+    throw error;
+  }
+}
 
 // Test Connection
 export async function testFirebaseConnection(): Promise<boolean> {
@@ -36,8 +98,97 @@ export async function testFirebaseConnection(): Promise<boolean> {
       console.error("Firebase offline or configuration issue:", error);
       return false;
     }
-    // Document not existing still means connection succeeded
     return true;
+  }
+}
+
+// Direct Firestore Event Syncing Functions
+export async function saveEventInfoToFirestore(info: Partial<EventInfo>): Promise<void> {
+  try {
+    const mainRef = doc(db, 'event_info', 'main');
+    const coupleRef = doc(db, 'couples', 'default');
+    const payload = { ...info, updatedAt: new Date().toISOString() };
+    await setDoc(mainRef, payload, { merge: true });
+    await setDoc(coupleRef, { eventInfo: payload, updatedAt: new Date().toISOString() }, { merge: true });
+  } catch (err) {
+    handleFirestoreError(err, OperationType.WRITE, 'event_info/main');
+  }
+}
+
+export async function saveGiftToFirestore(gift: Gift): Promise<void> {
+  try {
+    const giftRef = doc(db, 'gifts', gift.id);
+    await setDoc(giftRef, { ...gift, updatedAt: new Date().toISOString() }, { merge: true });
+  } catch (err) {
+    handleFirestoreError(err, OperationType.WRITE, `gifts/${gift.id}`);
+  }
+}
+
+export async function deleteGiftFromFirestore(giftId: string): Promise<void> {
+  try {
+    const giftRef = doc(db, 'gifts', giftId);
+    await deleteDoc(giftRef);
+  } catch (err) {
+    handleFirestoreError(err, OperationType.DELETE, `gifts/${giftId}`);
+  }
+}
+
+export async function saveGuestToFirestore(guest: Guest): Promise<void> {
+  try {
+    const guestRef = doc(db, 'guests', guest.id);
+    await setDoc(guestRef, { ...guest, updatedAt: new Date().toISOString() }, { merge: true });
+  } catch (err) {
+    handleFirestoreError(err, OperationType.WRITE, `guests/${guest.id}`);
+  }
+}
+
+export async function deleteGuestFromFirestore(guestId: string): Promise<void> {
+  try {
+    const guestRef = doc(db, 'guests', guestId);
+    await deleteDoc(guestRef);
+  } catch (err) {
+    handleFirestoreError(err, OperationType.DELETE, `guests/${guestId}`);
+  }
+}
+
+// Synchronize all data into Firestore
+export async function syncAllToFirestore(appData: { eventInfo?: EventInfo | null; gifts?: Gift[]; guests?: Guest[] }): Promise<boolean> {
+  try {
+    if (appData.eventInfo) {
+      await saveEventInfoToFirestore(appData.eventInfo);
+    }
+    if (appData.gifts && appData.gifts.length > 0) {
+      for (const gift of appData.gifts) {
+        await saveGiftToFirestore(gift);
+      }
+    }
+    if (appData.guests && appData.guests.length > 0) {
+      for (const guest of appData.guests) {
+        await saveGuestToFirestore(guest);
+      }
+    }
+    return true;
+  } catch (err) {
+    console.error('Error syncing all to Firestore:', err);
+    return false;
+  }
+}
+
+// Load all data from Firestore
+export async function loadAllFromFirestore() {
+  try {
+    const eventSnap = await getDoc(doc(db, 'event_info', 'main'));
+    const giftsSnap = await getDocs(collection(db, 'gifts'));
+    const guestsSnap = await getDocs(collection(db, 'guests'));
+
+    const eventInfo = eventSnap.exists() ? (eventSnap.data() as EventInfo) : null;
+    const gifts = giftsSnap.docs.map(d => d.data() as Gift);
+    const guests = guestsSnap.docs.map(d => d.data() as Guest);
+
+    return { eventInfo, gifts, guests };
+  } catch (err) {
+    handleFirestoreError(err, OperationType.GET, 'all_collections');
+    return null;
   }
 }
 
@@ -45,14 +196,12 @@ export async function testFirebaseConnection(): Promise<boolean> {
 export async function loginOrRegisterWithEmail(name: string, email: string, pass: string): Promise<FirebaseUser> {
   let user: FirebaseUser;
   try {
-    // Attempt sign in
     const cred = await signInWithEmailAndPassword(auth, email, pass);
     user = cred.user;
     if (name && (!user.displayName || user.displayName !== name)) {
       await updateProfile(user, { displayName: name });
     }
   } catch (err: any) {
-    // If user does not exist or credentials fail, attempt registration
     if (
       err.code === 'auth/user-not-found' || 
       err.code === 'auth/invalid-credential' ||
@@ -111,17 +260,18 @@ export async function saveAdminToFirestore(user: FirebaseUser, role: string = 'b
       role,
       updatedAt: new Date().toISOString()
     };
-    const { setDoc } = await import('firebase/firestore');
     await setDoc(adminRef, docData, { merge: true });
   } catch (e) {
-    console.warn('Note: Firestore admin save warning:', e);
+    handleFirestoreError(e, OperationType.WRITE, `admins/${user.uid}`);
   }
 }
 
 export async function saveCoupleToFirestore(uid: string, eventInfo: any, gifts?: any[], guests?: any[]) {
   try {
     const coupleRef = doc(db, 'couples', uid);
-    const { setDoc } = await import('firebase/firestore');
+    const defaultRef = doc(db, 'couples', 'default');
+    const mainRef = doc(db, 'event_info', 'main');
+
     const docData = {
       uid,
       eventInfo,
@@ -130,22 +280,25 @@ export async function saveCoupleToFirestore(uid: string, eventInfo: any, gifts?:
       updatedAt: new Date().toISOString()
     };
     await setDoc(coupleRef, docData, { merge: true });
+    await setDoc(defaultRef, docData, { merge: true });
+    if (eventInfo) {
+      await setDoc(mainRef, { ...eventInfo, updatedAt: new Date().toISOString() }, { merge: true });
+    }
   } catch (e) {
-    console.warn('Note: Could not save couple record to Firestore:', e);
+    handleFirestoreError(e, OperationType.WRITE, `couples/${uid}`);
   }
 }
 
 export async function getCoupleFromFirestore(uid: string) {
   try {
     const coupleRef = doc(db, 'couples', uid);
-    const { getDoc } = await import('firebase/firestore');
     const docSnap = await getDoc(coupleRef);
     if (docSnap.exists()) {
       return docSnap.data();
     }
     return null;
   } catch (e) {
-    console.warn('Note: Could not read couple record from Firestore:', e);
+    handleFirestoreError(e, OperationType.GET, `couples/${uid}`);
     return null;
   }
 }
@@ -184,5 +337,3 @@ export async function authenticateBrideAdminWithFirebase(
   await saveAdminToFirestore(user, 'bride_admin');
   return user;
 }
-
-

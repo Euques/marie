@@ -47,9 +47,52 @@ function saveData(data: AppData) {
 
 let db = loadData();
 
+const UPLOADS_DIR = path.join(__dirname, 'public', 'uploads');
+if (!fs.existsSync(UPLOADS_DIR)) {
+  fs.mkdirSync(UPLOADS_DIR, { recursive: true });
+}
+
 async function startServer() {
   const app = express();
-  app.use(express.json());
+  app.use(express.json({ limit: '50mb' }));
+  app.use(express.urlencoded({ limit: '50mb', extended: true }));
+
+  // Serve uploaded files statically
+  app.use('/uploads', express.static(UPLOADS_DIR));
+
+  // Upload Photo API
+  app.post('/api/upload', (req, res) => {
+    try {
+      const { image, fileName } = req.body;
+      if (!image) {
+        return res.status(400).json({ error: 'Nenhuma imagem enviada.' });
+      }
+
+      const matches = image.match(/^data:([A-Za-z-+\/]+);base64,(.+)$/);
+      let buffer: Buffer;
+      let ext = 'jpg';
+
+      if (matches && matches.length === 3) {
+        const mime = matches[1];
+        ext = mime.split('/')[1] || 'jpg';
+        buffer = Buffer.from(matches[2], 'base64');
+      } else {
+        buffer = Buffer.from(image, 'base64');
+      }
+
+      const extClean = ext.replace('+xml', '').replace('jpeg', 'jpg');
+      const safeName = `couple_photo_${Date.now()}_${Math.random().toString(36).substring(2, 7)}.${extClean}`;
+      const filePath = path.join(UPLOADS_DIR, safeName);
+
+      fs.writeFileSync(filePath, buffer);
+
+      const photoUrl = `/uploads/${safeName}`;
+      res.json({ success: true, url: photoUrl });
+    } catch (err: any) {
+      console.error('Erro no upload de foto:', err);
+      res.status(500).json({ error: err.message || 'Erro ao salvar a imagem.' });
+    }
+  });
 
   // API Routes
   app.get('/api/data', (req, res) => {

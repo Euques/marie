@@ -7,7 +7,18 @@ import { LoginPage } from './components/LoginPage';
 import { AdminPanel } from './components/AdminPanel';
 import { LandingPage } from './components/LandingPage';
 import { Heart, Sparkles, ArrowLeft, Home, User, Gift as GiftIcon, ShieldCheck, Menu, X } from 'lucide-react';
-import { subscribeToAuthChanges, logoutFirebase } from './lib/firebase';
+import { 
+  subscribeToAuthChanges, 
+  logoutFirebase, 
+  getCoupleFromFirestore, 
+  saveEventInfoToFirestore, 
+  saveGiftToFirestore, 
+  deleteGiftFromFirestore, 
+  saveGuestToFirestore, 
+  deleteGuestFromFirestore, 
+  loadAllFromFirestore,
+  syncAllToFirestore
+} from './lib/firebase';
 
 const getCoupleSlug = (brideName?: string, groomName?: string): string => {
   const bride = brideName || 'mariana';
@@ -84,7 +95,7 @@ export default function App() {
 
   // Listen to Firebase Authentication state changes
   useEffect(() => {
-    const unsubscribe = subscribeToAuthChanges((firebaseUser) => {
+    const unsubscribe = subscribeToAuthChanges(async (firebaseUser) => {
       if (firebaseUser) {
         const isGoogle = firebaseUser.providerData.some(p => p.providerId === 'google.com');
         const session: GuestAuthSession = {
@@ -99,6 +110,20 @@ export default function App() {
           localStorage.setItem('cha_guest_unlocked', 'true');
         } catch (err) {
           console.error(err);
+        }
+
+        // Fetch couple record created with this UID in Firestore
+        try {
+          const coupleRecord = await getCoupleFromFirestore(firebaseUser.uid);
+          if (coupleRecord && coupleRecord.eventInfo) {
+            setData({
+              eventInfo: coupleRecord.eventInfo,
+              gifts: coupleRecord.gifts || [],
+              guests: coupleRecord.guests || []
+            });
+          }
+        } catch (err) {
+          console.warn('Could not load couple record from Firestore:', err);
         }
       }
     });
@@ -146,16 +171,36 @@ export default function App() {
     showToast('Você saiu da sua conta de convidado.');
   };
 
-  // Fetch data from server
+  // Fetch data from server & Firestore
   const fetchData = async () => {
     try {
+      // 1. Load from Firestore
+      const fsData = await loadAllFromFirestore();
+
+      // 2. Load from local Express server
       const res = await fetch('/api/data');
       if (res.ok) {
         const json = await res.json();
-        setData(json);
+
+        // If Firestore is empty (first load), push dataset to Firestore automatically!
+        if (!fsData || !fsData.eventInfo) {
+          syncAllToFirestore(json).catch(err => console.warn('Auto-seed Firestore:', err));
+        }
+
+        setData({
+          eventInfo: fsData?.eventInfo || json.eventInfo,
+          gifts: fsData && fsData.gifts.length > 0 ? fsData.gifts : json.gifts,
+          guests: fsData && fsData.guests.length > 0 ? fsData.guests : json.guests,
+        });
+      } else if (fsData && fsData.eventInfo) {
+        setData({
+          eventInfo: fsData.eventInfo,
+          gifts: fsData.gifts || [],
+          guests: fsData.guests || []
+        });
       }
     } catch (err) {
-      console.warn('Could not fetch /api/data, using local state:', err);
+      console.warn('Could not fetch data, using local state:', err);
     } finally {
       setLoading(false);
     }
@@ -172,8 +217,21 @@ export default function App() {
     setTimeout(() => setCopiedLink(false), 3000);
   };
 
-  // API Call Handlers
+  // API Call Handlers with direct Firestore sync
   const handleClaimGift = async (giftId: string, claimData: { guestName: string; guestEmail?: string; guestPhone?: string; notes?: string }) => {
+    const targetGift = data.gifts.find(g => g.id === giftId);
+    if (targetGift) {
+      const updatedGift: Gift = {
+        ...targetGift,
+        isClaimed: true,
+        claimedByGuestName: claimData.guestName,
+        claimedByGuestEmail: claimData.guestEmail,
+        claimedByGuestPhone: claimData.guestPhone,
+        notes: claimData.notes
+      };
+      await saveGiftToFirestore(updatedGift);
+    }
+
     const res = await fetch(`/api/gifts/${giftId}/claim`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
@@ -190,6 +248,18 @@ export default function App() {
   };
 
   const handleAddCustomGift = async (giftData: { name: string; category: GiftCategory; description?: string; priceRange?: string; isCustom?: boolean; claimedByGuestName?: string }) => {
+    const newGift: Gift = {
+      id: `gift_${Date.now()}_${Math.random().toString(36).substring(2, 6)}`,
+      name: giftData.name,
+      category: giftData.category,
+      description: giftData.description || '',
+      priceRange: giftData.priceRange || 'Até R$ 100',
+      isClaimed: !!giftData.claimedByGuestName,
+      claimedByGuestName: giftData.claimedByGuestName || '',
+      isCustom: true
+    };
+    await saveGiftToFirestore(newGift);
+
     const res = await fetch('/api/gifts', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
@@ -206,6 +276,18 @@ export default function App() {
   };
 
   const handleSubmitRsvp = async (rsvpData: { name: string; email?: string; phone?: string; companions: number; status: 'confirmed' | 'declined'; message?: string }) => {
+    const newGuest: Guest = {
+      id: `guest_${Date.now()}_${Math.random().toString(36).substring(2, 6)}`,
+      name: rsvpData.name,
+      email: rsvpData.email || '',
+      phone: rsvpData.phone || '',
+      companions: rsvpData.companions || 0,
+      status: rsvpData.status,
+      message: rsvpData.message || '',
+      updatedAt: new Date().toISOString()
+    };
+    await saveGuestToFirestore(newGuest);
+
     const res = await fetch('/api/rsvp', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
@@ -222,6 +304,8 @@ export default function App() {
   };
 
   const handleUpdateEventInfo = async (info: Partial<EventInfo>) => {
+    await saveEventInfoToFirestore(info);
+
     const res = await fetch('/api/event', {
       method: 'PUT',
       headers: { 'Content-Type': 'application/json' },
@@ -230,10 +314,12 @@ export default function App() {
 
     if (!res.ok) throw new Error('Erro ao atualizar configurações');
     await fetchData();
-    showToast('Informações do evento salvas!');
+    showToast('Informações do evento salvas no Firebase!');
   };
 
   const handleRegisterCouple = async (info: Partial<EventInfo>) => {
+    await saveEventInfoToFirestore(info);
+
     const res = await fetch('/api/register-couple', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
@@ -267,6 +353,19 @@ export default function App() {
   };
 
   const handleSaveGuest = async (guestData: Omit<Guest, 'id' | 'updatedAt'> & { id?: string }) => {
+    const guestObj: Guest = {
+      id: guestData.id || `guest_${Date.now()}_${Math.random().toString(36).substring(2, 6)}`,
+      name: guestData.name,
+      email: guestData.email || '',
+      phone: guestData.phone || '',
+      companions: guestData.companions || 0,
+      status: guestData.status || 'confirmed',
+      dietaryNotes: guestData.dietaryNotes || '',
+      message: guestData.message || '',
+      updatedAt: new Date().toISOString()
+    };
+    await saveGuestToFirestore(guestObj);
+
     const method = guestData.id ? 'PUT' : 'POST';
     const url = guestData.id ? `/api/guests/${guestData.id}` : '/api/guests';
 
@@ -283,6 +382,8 @@ export default function App() {
 
   const handleDeleteGuest = async (id: string) => {
     if (!confirm('Tem certeza que deseja remover este convidado?')) return;
+    await deleteGuestFromFirestore(id);
+
     const res = await fetch(`/api/guests/${id}`, { method: 'DELETE' });
     if (!res.ok) throw new Error('Erro ao excluir convidado');
     await fetchData();
@@ -290,6 +391,18 @@ export default function App() {
   };
 
   const handleSaveGift = async (giftData: Omit<Gift, 'id'> & { id?: string }) => {
+    const giftObj: Gift = {
+      id: giftData.id || `gift_${Date.now()}_${Math.random().toString(36).substring(2, 6)}`,
+      name: giftData.name,
+      category: giftData.category,
+      description: giftData.description || '',
+      priceRange: giftData.priceRange || 'Até R$ 100',
+      isClaimed: !!giftData.isClaimed,
+      claimedByGuestName: giftData.claimedByGuestName || '',
+      isCustom: !!giftData.isCustom
+    };
+    await saveGiftToFirestore(giftObj);
+
     const method = giftData.id ? 'PUT' : 'POST';
     const url = giftData.id ? `/api/gifts/${giftData.id}` : '/api/gifts';
 
@@ -306,6 +419,8 @@ export default function App() {
 
   const handleDeleteGift = async (id: string) => {
     if (!confirm('Tem certeza que deseja remover este presente da lista?')) return;
+    await deleteGiftFromFirestore(id);
+
     const res = await fetch(`/api/gifts/${id}`, { method: 'DELETE' });
     if (!res.ok) throw new Error('Erro ao excluir presente');
     await fetchData();
@@ -406,18 +521,6 @@ export default function App() {
             </button>
 
             <button
-              onClick={() => navigate('login')}
-              className={`px-3.5 py-2 rounded-xl transition cursor-pointer flex items-center space-x-1.5 ${
-                currentRoute === 'login' 
-                  ? 'bg-[#2D2D2D] text-white shadow-xs' 
-                  : 'text-[#2D2D2D]/80 hover:bg-[#F2ECE4]'
-              }`}
-            >
-              <User className="w-4 h-4 text-[#C5A059]" />
-              <span>Convidado</span>
-            </button>
-
-            <button
               onClick={() => navigate('noiva')}
               className={`px-3.5 py-2 rounded-xl transition cursor-pointer border flex items-center space-x-1.5 ${
                 currentRoute === 'noiva' 
@@ -428,6 +531,25 @@ export default function App() {
               <ShieldCheck className="w-4 h-4" />
               <span>Painel do Casal</span>
             </button>
+
+            {/* Logged in User Identification Chip */}
+            {guestSession && (
+              <div className="flex items-center space-x-2 bg-[#F2ECE4] border border-[#E5DFD5] px-3 py-1.5 rounded-xl text-xs font-bold text-[#2D2D2D] ml-2 shadow-2xs">
+                <div className="w-5 h-5 rounded-full bg-[#C5A059] text-white flex items-center justify-center text-[10px] font-extrabold uppercase shrink-0">
+                  {guestSession.name.charAt(0)}
+                </div>
+                <span className="truncate max-w-[120px] font-semibold text-xs text-[#2D2D2D]">
+                  {guestSession.name.split(' ')[0]}
+                </span>
+                <button 
+                  onClick={handleLogoutGuest} 
+                  title="Sair da conta" 
+                  className="text-[#2D2D2D]/50 hover:text-rose-600 transition p-0.5 cursor-pointer"
+                >
+                  <X className="w-3.5 h-3.5" />
+                </button>
+              </div>
+            )}
           </nav>
 
           {/* Mobile Hamburger Button */}
@@ -523,20 +645,6 @@ export default function App() {
               </button>
 
               <button
-                onClick={() => { navigate('login'); setIsMobileMenuOpen(false); }}
-                className={`w-full p-4 rounded-2xl transition flex items-center justify-between text-xs font-bold uppercase tracking-wider cursor-pointer ${
-                  currentRoute === 'login' 
-                    ? 'bg-[#2D2D2D] text-white shadow-md' 
-                    : 'bg-[#FAF9F6] text-[#2D2D2D] border border-[#E5DFD5] hover:bg-[#F2ECE4]'
-                }`}
-              >
-                <div className="flex items-center space-x-3">
-                  <User className="w-4 h-4 text-[#C5A059]" />
-                  <span>Identificação do Convidado</span>
-                </div>
-              </button>
-
-              <button
                 onClick={() => { navigate('noiva'); setIsMobileMenuOpen(false); }}
                 className={`w-full p-4 rounded-2xl transition flex items-center justify-between text-xs font-bold uppercase tracking-wider cursor-pointer ${
                   currentRoute === 'noiva' 
@@ -549,6 +657,32 @@ export default function App() {
                   <span>Painel do Casal</span>
                 </div>
               </button>
+
+              {/* Logged in User Identification Chip on Mobile */}
+              {guestSession && (
+                <div className="p-4 bg-[#F2ECE4] border border-[#E5DFD5] rounded-2xl flex items-center justify-between">
+                  <div className="flex items-center space-x-3 min-w-0">
+                    <div className="w-8 h-8 rounded-full bg-[#C5A059] text-white flex items-center justify-center text-xs font-extrabold uppercase shrink-0">
+                      {guestSession.name.charAt(0)}
+                    </div>
+                    <div className="min-w-0">
+                      <span className="text-[10px] uppercase font-bold text-[#C5A059] block leading-none">
+                        Usuário Logado
+                      </span>
+                      <span className="text-xs font-extrabold text-[#2D2D2D] truncate block pt-1">
+                        {guestSession.name}
+                      </span>
+                    </div>
+                  </div>
+
+                  <button 
+                    onClick={() => { handleLogoutGuest(); setIsMobileMenuOpen(false); }} 
+                    className="px-3 py-1.5 bg-rose-100 text-rose-700 hover:bg-rose-200 text-[10px] font-bold uppercase tracking-wider rounded-xl transition cursor-pointer"
+                  >
+                    Sair
+                  </button>
+                </div>
+              )}
             </nav>
 
             <div className="pt-2 text-center text-[11px] text-[#2D2D2D]/60 font-sans">

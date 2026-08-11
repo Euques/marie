@@ -1,0 +1,81 @@
+{
+  "entities": {
+    "EventInfo": {
+      "title": "EventInfo",
+      "description": "Informações do Chá de Panela do Casal",
+      "type": "object",
+      "properties": {
+        "coupleNames": { "type": "string" },
+        "brideName": { "type": "string" },
+        "groomName": { "type": "string" },
+        "date": { "type": "string" },
+        "time": { "type": "string" },
+        "venue": { "type": "string" },
+        "address": { "type": "string" },
+        "cityState": { "type": "string" },
+        "pixKey": { "type": "string" },
+        "welcomeMessage": { "type": "string" },
+        "storyText": { "type": "string" },
+        "couplePhotoUrl": { "type": "string" },
+        "dressCode": { "type": "string" },
+        "mapUrl": { "type": "string" },
+        "updatedAt": { "type": "string" }
+      }
+    },
+    "Gift": {
+      "title": "Gift",
+      "description": "Item da lista de presentes do Chá de Panela",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string" },
+        "name": { "type": "string" },
+        "category": { "type": "string" },
+        "description": { "type": "string" },
+        "priceRange": { "type": "string" },
+        "isClaimed": { "type": "boolean" },
+        "claimedByGuestName": { "type": "string" },
+        "claimedByGuestEmail": { "type": "string" },
+        "claimedByGuestPhone": { "type": "string" },
+        "isCustom": { "type": "boolean" },
+        "notes": { "type": "string" },
+        "createdAt": { "type": "string" }
+      },
+      "required": ["id", "name", "category"]
+    },
+    "Guest": {
+      "title": "Guest",
+      "description": "Convidado do Chá de Panela com confirmação de presença (RSVP)",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string" },
+        "name": { "type": "string" },
+        "email": { "type": "string" },
+        "phone": { "type": "string" },
+        "companions": { "type": "number" },
+        "status": { "type": "string", "enum": ["confirmed", "declined", "pending"] },
+        "dietaryNotes": { "type": "string" },
+        "message": { "type": "string" },
+        "updatedAt": { "type": "string" }
+      },
+      "required": ["id", "name", "status"]
+    }
+  },
+  "firestore": {
+    "/event_info/{eventId}": {
+      "schema": "EventInfo",
+      "description": "Dados do evento principal"
+    },
+    "/gifts/{giftId}": {
+      "schema": "Gift",
+      "description": "Coleção de presentes"
+    },
+    "/guests/{guestId}": {
+      "schema": "Guest",
+      "description": "Coleção de convidados e respostas RSVP"
+    },
+    "/couples/{coupleId}": {
+      "schema": "EventInfo",
+      "description": "Coleção consolidada do casal"
+    }
+  }
+}
