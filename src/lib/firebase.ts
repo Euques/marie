@@ -44,12 +44,15 @@ export const app = existingApps.length > 0 ? existingApps[0] : initializeApp(fir
 
 // Initialize Firestore properly with ignoreUndefinedProperties
 export const db = (() => {
+  const dbId = (firebaseConfig.firestoreDatabaseId && firebaseConfig.firestoreDatabaseId !== '(default)') 
+    ? firebaseConfig.firestoreDatabaseId 
+    : undefined;
   try {
-    return initializeFirestore(app, {
-      ignoreUndefinedProperties: true
-    }, firebaseConfig.firestoreDatabaseId);
+    return dbId 
+      ? initializeFirestore(app, { ignoreUndefinedProperties: true }, dbId)
+      : initializeFirestore(app, { ignoreUndefinedProperties: true });
   } catch {
-    return getFirestore(app, firebaseConfig.firestoreDatabaseId);
+    return dbId ? getFirestore(app, dbId) : getFirestore(app);
   }
 })();
 
