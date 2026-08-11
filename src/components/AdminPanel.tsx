@@ -1330,21 +1330,26 @@ export const AdminPanel: React.FC<AdminPanelProps> = ({
               
               <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 text-xs">
                 <div>
-                  <span className="text-[10px] font-bold text-[#2D2D2D]/60 block uppercase">Identificador de Projeto</span>
+                  <span className="text-[10px] font-bold text-[#2D2D2D]/60 block uppercase">Identificador do Projeto</span>
                   <span className="font-mono text-[#2D2D2D] font-bold">{firebaseConfig.projectId}</span>
+                </div>
+                <div>
+                  <span className="text-[10px] font-bold text-[#2D2D2D]/60 block uppercase">Nome do Banco Firestore (Selecione no Console)</span>
+                  <span className="font-mono text-[#C5A059] font-bold bg-[#FAF3E0] px-2 py-0.5 rounded border border-[#C5A059]/30 block truncate">
+                    {firebaseConfig.firestoreDatabaseId || '(default)'}
+                  </span>
                 </div>
                 <div>
                   <span className="text-[10px] font-bold text-[#2D2D2D]/60 block uppercase">Domínio Seguro</span>
                   <span className="font-mono text-[#2D2D2D] font-bold">{firebaseConfig.authDomain}</span>
                 </div>
                 <div>
-                  <span className="text-[10px] font-bold text-[#2D2D2D]/60 block uppercase">Chave da Aplicação</span>
-                  <span className="font-mono text-[#2D2D2D] font-bold truncate block">{firebaseConfig.appId}</span>
-                </div>
-                <div>
                   <span className="text-[10px] font-bold text-[#2D2D2D]/60 block uppercase">Servidor de Fotos/Mídia</span>
                   <span className="font-mono text-[#2D2D2D] font-bold truncate block">{firebaseConfig.storageBucket}</span>
                 </div>
+              </div>
+              <div className="p-3 bg-amber-50 border border-amber-200 rounded-xl text-[11px] text-amber-900 leading-relaxed font-sans">
+                <strong>Atenção para visualizar os dados no Firebase Console:</strong> Por padrão, o Firebase Console abre no banco <code>(default)</code>. Para ver suas coleções, clique no menu suspenso de bancos de dados no topo do Firebase Console e selecione <code>{firebaseConfig.firestoreDatabaseId}</code>.
               </div>
             </div>
 

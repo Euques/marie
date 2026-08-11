@@ -24,18 +24,13 @@ import {
 } from 'firebase/auth';
 import { EventInfo, Gift, Guest } from '../types';
 
-export const firebaseConfig = {
-  apiKey: "AIzaSyAP5OXrafFgZ0vZRUfdgl7zw3EOJJs0bwk",
-  authDomain: "studio-411611899-37c44.firebaseapp.com",
-  projectId: "studio-411611899-37c44",
-  storageBucket: "studio-411611899-37c44.firebasestorage.app",
-  messagingSenderId: "712982436079",
-  appId: "1:712982436079:web:9adc47303be613f80b631a"
-};
+import appletConfig from '../../firebase-applet-config.json';
+
+export const firebaseConfig = appletConfig as any;
 
 // Initialize Firebase App
 export const app = getApps().length > 0 ? getApp() : initializeApp(firebaseConfig);
-export const db = getFirestore(app);
+export const db = getFirestore(app, firebaseConfig.firestoreDatabaseId);
 export const auth = getAuth(app);
 export const storage = getStorage(app);
 
