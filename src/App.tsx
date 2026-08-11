@@ -575,14 +575,6 @@ export default function App() {
 
         {currentRoute === 'noiva' && (
           <div className="max-w-7xl mx-auto space-y-4">
-            <div className="flex items-center justify-between bg-white px-6 py-3 rounded-2xl border border-[#E5DFD5] shadow-xs">
-              <span className="font-serif italic font-bold text-lg text-[#2D2D2D]">
-                Painel do Casal ({data.eventInfo.brideName} & {data.eventInfo.groomName})
-              </span>
-              <span className="text-xs font-bold text-[#C5A059] uppercase tracking-wider bg-[#F2ECE4] px-3 py-1 rounded-full border border-[#E5DFD5]">
-                Acesso Restrito
-              </span>
-            </div>
             <AdminPanel 
               eventInfo={data.eventInfo}
               gifts={data.gifts}
@@ -603,7 +595,7 @@ export default function App() {
       </main>
 
       {/* Footer minimal */}
-      {(currentRoute === 'home' || currentRoute === 'login' || currentRoute === 'superadmin') ? (
+      {(currentRoute === 'home' || currentRoute === 'login' || currentRoute === 'superadmin' || currentRoute === 'noiva') ? (
         <footer className="no-print py-8 text-center text-xs text-[#2D2D2D]/60 border-t border-[#E5DFD5] bg-[#FAF9F6]">
           <div className="flex items-center justify-center space-x-2 font-extrabold text-sm text-[#2D2D2D]">
             <Sparkles className="w-4 h-4 text-[#C5A059]" />
