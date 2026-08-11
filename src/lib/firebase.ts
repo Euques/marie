@@ -57,15 +57,24 @@ export const db = (() => {
 })();
 
 export const auth = getAuth(app);
-export const storage = getStorage(app);
+export const storage = getStorage(
+  app,
+  firebaseConfig.storageBucket
+    ? (firebaseConfig.storageBucket.startsWith('gs://') ? firebaseConfig.storageBucket : `gs://${firebaseConfig.storageBucket}`)
+    : undefined
+);
 
 // Helper to ensure an authenticated session exists
 export async function ensureAuth(): Promise<void> {
   if (!auth.currentUser) {
     try {
       await signInAnonymously(auth);
-    } catch (err) {
-      console.warn('Anonymous auth notice:', err);
+    } catch (err: any) {
+      if (err?.code === 'auth/admin-restricted-operation') {
+        console.warn('Para usar autenticação anônima, ative o provedor "Anônimo" em Firebase Console > Authentication > Sign-in method.');
+      } else {
+        console.warn('Aviso de autenticação anônima:', err?.message || err);
+      }
     }
   }
 }
@@ -97,15 +106,9 @@ export function handleFirestoreError(error: unknown, operationType: OperationTyp
 
 // Upload Photo directly to Firebase Storage
 export async function uploadPhotoToStorage(fileOrBase64: File | string, folder: string = 'couples'): Promise<string | null> {
-  if (!auth.currentUser) {
-    try {
-      await signInAnonymously(auth);
-    } catch (authErr) {
-      console.warn('Silent anonymous auth for Firebase Storage upload:', authErr);
-    }
-  }
+  await ensureAuth();
 
-  const uid = auth.currentUser?.uid || 'guest';
+  const uid = auth.currentUser?.uid || 'anonymous';
   const fileName = `photo_${Date.now()}_${Math.random().toString(36).substring(2, 7)}.jpg`;
   const fileReference = storageRef(storage, `${folder}/${uid}/${fileName}`);
 
@@ -114,15 +117,21 @@ export async function uploadPhotoToStorage(fileOrBase64: File | string, folder: 
       // Base64 data string
       const snapshot = await uploadString(fileReference, fileOrBase64, 'data_url');
       const downloadUrl = await getDownloadURL(snapshot.ref);
+      console.log('Sucesso no upload para Firebase Storage:', downloadUrl);
       return downloadUrl;
     } else {
       // File object
       const snapshot = await uploadBytes(fileReference, fileOrBase64);
       const downloadUrl = await getDownloadURL(snapshot.ref);
+      console.log('Sucesso no upload para Firebase Storage:', downloadUrl);
       return downloadUrl;
     }
-  } catch (error) {
-    console.warn('Firebase Storage direct upload not authorized:', error);
+  } catch (error: any) {
+    if (error?.code === 'storage/unauthorized') {
+      console.warn('Firebase Storage requer permissão de gravação. Verifique as Regras (Rules) no Firebase Console > Storage > Regras.');
+    } else {
+      console.error('Erro no upload para Firebase Storage:', error?.code || error?.message || error);
+    }
     return null;
   }
 }
