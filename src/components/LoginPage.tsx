@@ -42,7 +42,7 @@ export const LoginPage: React.FC<LoginPageProps> = ({
   const [adminPassword, setAdminPassword] = useState('');
   const [showAdminPassword, setShowAdminPassword] = useState(false);
 
-  // Google Auth for Guest / Couple
+  // Google Auth for Guest
   const handleGoogleAuth = async () => {
     setAuthError('');
     setLoadingAuth(true);
@@ -55,9 +55,36 @@ export const LoginPage: React.FC<LoginPageProps> = ({
         sessionStorage.setItem('cha_superadmin_authenticated', 'true');
         onNavigate('superadmin');
       } else {
-        sessionStorage.setItem('cha_couple_authenticated', 'true');
+        sessionStorage.removeItem('cha_couple_authenticated');
         onLoginSuccess(displayName, userEmail, 'google');
         onNavigate('casal');
+      }
+    } catch (err: any) {
+      console.warn('Google Popup Error:', err);
+      if (err.code === 'auth/popup-closed-by-user') {
+        setAuthError('Autenticação com Google cancelada.');
+      } else {
+        setAuthError('Não foi possível abrir a janela do Google. Você também pode logar com E-mail e Senha.');
+      }
+    } finally {
+      setLoadingAuth(false);
+    }
+  };
+
+  // Google Auth for Couple (Noivos)
+  const handleCoupleGoogleAuth = async () => {
+    setAuthError('');
+    setLoadingAuth(true);
+    try {
+      const firebaseUser = await loginWithGoogle();
+      const userEmail = firebaseUser.email || '';
+
+      if (userEmail.toLowerCase() === 'euques@gmail.com') {
+        sessionStorage.setItem('cha_superadmin_authenticated', 'true');
+        onNavigate('superadmin');
+      } else {
+        sessionStorage.setItem('cha_couple_authenticated', 'true');
+        onNavigate('noiva');
       }
     } catch (err: any) {
       console.warn('Google Popup Error:', err);
@@ -95,6 +122,7 @@ export const LoginPage: React.FC<LoginPageProps> = ({
         sessionStorage.setItem('cha_superadmin_authenticated', 'true');
         onNavigate('superadmin');
       } else {
+        sessionStorage.removeItem('cha_couple_authenticated');
         onLoginSuccess(displayName, user.email || emailInput.trim(), 'email');
         onNavigate('casal');
       }
@@ -426,7 +454,7 @@ export const LoginPage: React.FC<LoginPageProps> = ({
               Painel do <span className="text-[#C5A059]">Casal (Noivos)</span>
             </h1>
             <p className="text-xs text-[#2D2D2D]/75 font-medium leading-relaxed">
-              Informe o e-mail e a senha do casal para acessar a gestão restrita do Chá de Panela.
+              Acesse a gestão do seu Chá de Panela com sua conta Google ou e-mail cadastrado.
             </p>
           </div>
 
@@ -436,64 +464,126 @@ export const LoginPage: React.FC<LoginPageProps> = ({
             </div>
           )}
 
-          {/* COUPLE LOGIN FORM */}
-          <form onSubmit={handleCoupleEmailAuthSubmit} className="space-y-3.5 text-left bg-white p-5 rounded-2xl border border-[#E5DFD5] shadow-xs">
-            <div className="space-y-1">
-              <label className="text-[11px] font-extrabold uppercase tracking-wider text-[#2D2D2D]/80">
-                E-mail do Casal
-              </label>
-              <div className="relative">
-                <Mail className="w-4 h-4 text-[#2D2D2D]/40 absolute left-3.5 top-1/2 -translate-y-1/2" />
-                <input
-                  type="email"
-                  required
-                  placeholder="casal@exemplo.com"
-                  value={coupleEmail}
-                  onChange={(e) => setCoupleEmail(e.target.value)}
-                  className="w-full pl-10 pr-3.5 py-3 rounded-xl border border-[#E5DFD5] bg-[#FAF9F6] text-sm text-[#2D2D2D] focus:bg-white focus:outline-none focus:ring-2 focus:ring-[#C5A059]"
-                />
-              </div>
-            </div>
-
-            <div className="space-y-1">
-              <label className="text-[11px] font-extrabold uppercase tracking-wider text-[#2D2D2D]/80">
-                Senha do Casal
-              </label>
-              <div className="relative">
-                <Lock className="w-4 h-4 text-[#2D2D2D]/40 absolute left-3.5 top-1/2 -translate-y-1/2" />
-                <input
-                  type={showCouplePassword ? 'text' : 'password'}
-                  required
-                  placeholder="Sua senha de acesso"
-                  value={couplePassword}
-                  onChange={(e) => setCouplePassword(e.target.value)}
-                  className="w-full pl-10 pr-10 py-3 rounded-xl border border-[#E5DFD5] bg-[#FAF9F6] text-sm text-[#2D2D2D] focus:bg-white focus:outline-none focus:ring-2 focus:ring-[#C5A059]"
-                />
-                <button
-                  type="button"
-                  onClick={() => setShowCouplePassword(!showCouplePassword)}
-                  className="absolute right-3.5 top-1/2 -translate-y-1/2 text-[#2D2D2D]/50 hover:text-[#2D2D2D] p-1 cursor-pointer"
-                >
-                  {showCouplePassword ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
-                </button>
-              </div>
-            </div>
+          {/* AUTH METHOD SELECTOR */}
+          <div className="flex bg-[#FAF9F6] p-1.5 rounded-2xl border border-[#E5DFD5]">
+            <button
+              type="button"
+              onClick={() => { setAuthMode('google'); setAuthError(''); }}
+              className={`flex-1 py-2.5 px-3 rounded-xl text-xs font-extrabold uppercase tracking-wider transition-all flex items-center justify-center space-x-2 min-h-[44px] cursor-pointer ${
+                authMode === 'google' 
+                  ? 'bg-white text-[#2D2D2D] shadow-sm border border-[#E5DFD5]' 
+                  : 'text-[#2D2D2D]/60 hover:text-[#2D2D2D]'
+              }`}
+            >
+              <svg className="w-4 h-4 shrink-0" viewBox="0 0 24 24">
+                <path fill="#4285F4" d="M23.745 12.27c0-.7-.06-1.4-.19-2.07H12v4.51h6.6c-.29 1.52-1.14 2.82-2.4 3.68v3.05h3.88c2.27-2.09 3.665-5.17 3.665-9.17z"/>
+                <path fill="#34A853" d="M12 24c3.24 0 5.95-1.08 7.93-2.91l-3.88-3.05c-1.08.72-2.45 1.16-4.05 1.16-3.12 0-5.77-2.11-6.72-4.96H1.28v3.15C3.25 21.3 7.31 24 12 24z"/>
+                <path fill="#FBBC05" d="M5.28 14.24c-.25-.72-.38-1.49-.38-2.24s.13-1.52.38-2.24V6.61H1.28C.46 8.23 0 10.06 0 12s.46 3.77 1.28 5.39l4-3.15z"/>
+                <path fill="#EA4335" d="M12 4.75c1.77 0 3.35.61 4.6 1.8l3.42-3.42C17.95 1.19 15.24 0 12 0 7.31 0 3.25 2.7 1.28 6.61l4 3.15c.95-2.85 3.6-4.96 6.72-4.96z"/>
+              </svg>
+              <span>Google</span>
+            </button>
 
             <button
-              type="submit"
-              disabled={loadingAuth}
-              className="w-full py-3.5 px-5 bg-[#C5A059] hover:bg-[#B38F48] text-white text-xs font-extrabold uppercase tracking-widest rounded-xl transition shadow-md flex items-center justify-center space-x-2 disabled:opacity-50 min-h-[48px] cursor-pointer mt-2 active:scale-95"
+              type="button"
+              onClick={() => { setAuthMode('email'); setAuthError(''); }}
+              className={`flex-1 py-2.5 px-3 rounded-xl text-xs font-extrabold uppercase tracking-wider transition-all flex items-center justify-center space-x-2 min-h-[44px] cursor-pointer ${
+                authMode === 'email' 
+                  ? 'bg-white text-[#2D2D2D] shadow-sm border border-[#E5DFD5]' 
+                  : 'text-[#2D2D2D]/60 hover:text-[#2D2D2D]'
+              }`}
             >
-              {loadingAuth ? (
-                <Loader2 className="w-5 h-5 text-white animate-spin" />
-              ) : (
-                <>
-                  <ShieldCheck className="w-4 h-4" />
-                  <span>Entrar no Painel do Casal</span>
-                </>
-              )}
+              <Mail className="w-4 h-4 text-[#C5A059]" />
+              <span>E-mail e Senha</span>
             </button>
-          </form>
+          </div>
+
+          {/* GOOGLE OPTION */}
+          {authMode === 'google' && (
+            <div className="space-y-3 animate-fade-in">
+              <button
+                type="button"
+                disabled={loadingAuth}
+                onClick={handleCoupleGoogleAuth}
+                className="w-full py-4 px-5 bg-white hover:bg-[#FAF9F6] active:scale-95 text-[#2D2D2D] font-extrabold text-sm rounded-2xl border-2 border-[#C5A059] shadow-md hover:shadow-lg transition-all flex items-center justify-center space-x-3 disabled:opacity-50 cursor-pointer min-h-[52px] group"
+              >
+                {loadingAuth ? (
+                  <Loader2 className="w-6 h-6 text-[#C5A059] animate-spin" />
+                ) : (
+                  <div className="w-7 h-7 rounded-full bg-white p-1 border border-[#E5DFD5] flex items-center justify-center shrink-0 shadow-2xs group-hover:scale-105 transition-transform">
+                    <svg className="w-full h-full" viewBox="0 0 24 24">
+                      <path fill="#4285F4" d="M23.745 12.27c0-.7-.06-1.4-.19-2.07H12v4.51h6.6c-.29 1.52-1.14 2.82-2.4 3.68v3.05h3.88c2.27-2.09 3.665-5.17 3.665-9.17z"/>
+                      <path fill="#34A853" d="M12 24c3.24 0 5.95-1.08 7.93-2.91l-3.88-3.05c-1.08.72-2.45 1.16-4.05 1.16-3.12 0-5.77-2.11-6.72-4.96H1.28v3.15C3.25 21.3 7.31 24 12 24z"/>
+                      <path fill="#FBBC05" d="M5.28 14.24c-.25-.72-.38-1.49-.38-2.24s.13-1.52.38-2.24V6.61H1.28C.46 8.23 0 10.06 0 12s.46 3.77 1.28 5.39l4-3.15z"/>
+                      <path fill="#EA4335" d="M12 4.75c1.77 0 3.35.61 4.6 1.8l3.42-3.42C17.95 1.19 15.24 0 12 0 7.31 0 3.25 2.7 1.28 6.61l4 3.15c.95-2.85 3.6-4.96 6.72-4.96z"/>
+                    </svg>
+                  </div>
+                )}
+                <span className="tracking-wide">Entrar com Google como Noivos</span>
+              </button>
+            </div>
+          )}
+
+          {/* EMAIL OPTION */}
+          {authMode === 'email' && (
+            <form onSubmit={handleCoupleEmailAuthSubmit} className="space-y-3.5 text-left bg-white p-5 rounded-2xl border border-[#E5DFD5] shadow-xs animate-fade-in">
+              <div className="space-y-1">
+                <label className="text-[11px] font-extrabold uppercase tracking-wider text-[#2D2D2D]/80">
+                  E-mail do Casal
+                </label>
+                <div className="relative">
+                  <Mail className="w-4 h-4 text-[#2D2D2D]/40 absolute left-3.5 top-1/2 -translate-y-1/2" />
+                  <input
+                    type="email"
+                    required
+                    placeholder="casal@exemplo.com"
+                    value={coupleEmail}
+                    onChange={(e) => setCoupleEmail(e.target.value)}
+                    className="w-full pl-10 pr-3.5 py-3 rounded-xl border border-[#E5DFD5] bg-[#FAF9F6] text-sm text-[#2D2D2D] focus:bg-white focus:outline-none focus:ring-2 focus:ring-[#C5A059]"
+                  />
+                </div>
+              </div>
+
+              <div className="space-y-1">
+                <label className="text-[11px] font-extrabold uppercase tracking-wider text-[#2D2D2D]/80">
+                  Senha do Casal
+                </label>
+                <div className="relative">
+                  <Lock className="w-4 h-4 text-[#2D2D2D]/40 absolute left-3.5 top-1/2 -translate-y-1/2" />
+                  <input
+                    type={showCouplePassword ? 'text' : 'password'}
+                    required
+                    placeholder="Sua senha de acesso"
+                    value={couplePassword}
+                    onChange={(e) => setCouplePassword(e.target.value)}
+                    className="w-full pl-10 pr-10 py-3 rounded-xl border border-[#E5DFD5] bg-[#FAF9F6] text-sm text-[#2D2D2D] focus:bg-white focus:outline-none focus:ring-2 focus:ring-[#C5A059]"
+                  />
+                  <button
+                    type="button"
+                    onClick={() => setShowCouplePassword(!showCouplePassword)}
+                    className="absolute right-3.5 top-1/2 -translate-y-1/2 text-[#2D2D2D]/50 hover:text-[#2D2D2D] p-1 cursor-pointer"
+                  >
+                    {showCouplePassword ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
+                  </button>
+                </div>
+              </div>
+
+              <button
+                type="submit"
+                disabled={loadingAuth}
+                className="w-full py-3.5 px-5 bg-[#C5A059] hover:bg-[#B38F48] text-white text-xs font-extrabold uppercase tracking-widest rounded-xl transition shadow-md flex items-center justify-center space-x-2 disabled:opacity-50 min-h-[48px] cursor-pointer mt-2 active:scale-95"
+              >
+                {loadingAuth ? (
+                  <Loader2 className="w-5 h-5 text-white animate-spin" />
+                ) : (
+                  <>
+                    <ShieldCheck className="w-4 h-4" />
+                    <span>Entrar no Painel do Casal</span>
+                  </>
+                )}
+              </button>
+            </form>
+          )}
 
         </div>
       )}

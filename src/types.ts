@@ -22,13 +22,14 @@ export interface EventInfo {
   date: string;
   time: string;
   location: string;
-  googleMapsUrl: string;
+  googleMapsUrl?: string;
   pixKey: string;
   pixName: string;
   pixCity?: string;
-  welcomeMessage: string;
+  welcomeMessage?: string;
+  description?: string;
   coverImage?: string;
-  adminPassword: string;
+  adminPassword?: string;
   adminEmail?: string;
   createdAt?: string;
   updatedAt?: string;

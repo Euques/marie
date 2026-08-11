@@ -13,6 +13,7 @@ import {
   subscribeToAuthChanges, 
   logoutFirebase, 
   getCoupleFromFirestore, 
+  saveCoupleToFirestore,
   saveEventInfoToFirestore, 
   saveGiftToFirestore, 
   deleteGiftFromFirestore, 
@@ -20,7 +21,8 @@ import {
   deleteGuestFromFirestore, 
   loadAllFromFirestore,
   syncAllToFirestore,
-  getAllCouplesFromFirestore
+  getAllCouplesFromFirestore,
+  auth
 } from './lib/firebase';
 
 const getCoupleSlug = (brideName?: string, groomName?: string): string => {
@@ -128,6 +130,37 @@ export default function App() {
               gifts: coupleRecord.gifts || [],
               guests: coupleRecord.guests || []
             });
+            setSelectedCoupleId(firebaseUser.uid);
+          } else if (sessionStorage.getItem('cha_couple_authenticated') === 'true') {
+            // New couple profile initialization with clean empty fields
+            const brideDefault = firebaseUser.displayName?.split(' ')[0] || firebaseUser.email?.split('@')[0] || '';
+            const newEventInfo: EventInfo = {
+              id: firebaseUser.uid,
+              brideName: brideDefault,
+              groomName: '',
+              eventTitle: brideDefault ? `Chá de Panela de ${brideDefault}` : '',
+              date: '',
+              time: '',
+              location: '',
+              description: '',
+              coverImage: '',
+              pixKey: '',
+              pixName: firebaseUser.displayName || ''
+            };
+            const newGifts: Gift[] = [];
+            const newGuests: Guest[] = [];
+
+            await saveCoupleToFirestore(firebaseUser.uid, newEventInfo, newGifts, newGuests);
+            
+            setData({
+              eventInfo: newEventInfo,
+              gifts: newGifts,
+              guests: newGuests
+            });
+            setSelectedCoupleId(firebaseUser.uid);
+
+            const updatedCouples = await getAllCouplesFromFirestore();
+            setRegisteredCouples(updatedCouples);
           }
         } catch (err) {
           console.warn('Could not load couple record from Firestore:', err);
@@ -185,19 +218,89 @@ export default function App() {
       const couplesList = await getAllCouplesFromFirestore();
       setRegisteredCouples(couplesList);
 
-      // 1. Load from Firestore
-      const fsData = await loadAllFromFirestore();
+      // If an authenticated couple exists, load their specific document
+      const isCouple = auth.currentUser && (sessionStorage.getItem('cha_couple_authenticated') === 'true' || currentRoute === 'noiva');
+      if (isCouple && auth.currentUser) {
+        const coupleRecord = await getCoupleFromFirestore(auth.currentUser.uid);
+        if (coupleRecord && coupleRecord.eventInfo) {
+          setData({
+            eventInfo: coupleRecord.eventInfo,
+            gifts: coupleRecord.gifts || [],
+            guests: coupleRecord.guests || []
+          });
+          setSelectedCoupleId(auth.currentUser.uid);
+          setLoading(false);
+          return;
+        } else {
+          // Initialize fresh couple profile for auth.currentUser.uid with clean empty fields
+          const brideDefault = auth.currentUser.displayName?.split(' ')[0] || auth.currentUser.email?.split('@')[0] || '';
+          const newEventInfo: EventInfo = {
+            id: auth.currentUser.uid,
+            brideName: brideDefault,
+            groomName: '',
+            eventTitle: brideDefault ? `Chá de Panela de ${brideDefault}` : '',
+            date: '',
+            time: '',
+            location: '',
+            description: '',
+            coverImage: '',
+            pixKey: '',
+            pixName: auth.currentUser.displayName || ''
+          };
+          const newGifts: Gift[] = [];
+          const newGuests: Guest[] = [];
 
-      // 2. Load from local Express server
+          await saveCoupleToFirestore(auth.currentUser.uid, newEventInfo, newGifts, newGuests);
+          
+          setData({
+            eventInfo: newEventInfo,
+            gifts: newGifts,
+            guests: newGuests
+          });
+          setSelectedCoupleId(auth.currentUser.uid);
+          setLoading(false);
+
+          const updatedCouples = await getAllCouplesFromFirestore();
+          setRegisteredCouples(updatedCouples);
+          return;
+        }
+      }
+
+      // If a specific couple is selected (from URL or selection)
+      if (selectedCoupleId) {
+        const found = couplesList.find(c => c.id === selectedCoupleId);
+        if (found) {
+          setData({
+            eventInfo: found.eventInfo,
+            gifts: found.gifts || [],
+            guests: found.guests || []
+          });
+          setLoading(false);
+          return;
+        }
+      }
+
+      // Fallback: If registered couples exist, select the first
+      if (couplesList.length > 0) {
+        const first = couplesList[0];
+        setData({
+          eventInfo: first.eventInfo,
+          gifts: first.gifts || [],
+          guests: first.guests || []
+        });
+        setSelectedCoupleId(first.id);
+        setLoading(false);
+        return;
+      }
+
+      // Final Fallback
+      const fsData = await loadAllFromFirestore();
       const res = await fetch('/api/data');
       if (res.ok) {
         const json = await res.json();
-
-        // If Firestore is empty (first load), push dataset to Firestore automatically!
         if (!fsData || !fsData.eventInfo) {
           syncAllToFirestore(json).catch(err => console.warn('Auto-seed Firestore:', err));
         }
-
         setData({
           eventInfo: fsData?.eventInfo || json.eventInfo,
           gifts: fsData && fsData.gifts.length > 0 ? fsData.gifts : json.gifts,
@@ -230,17 +333,26 @@ export default function App() {
 
   // API Call Handlers with direct Firestore sync
   const handleClaimGift = async (giftId: string, claimData: { guestName: string; guestEmail?: string; guestPhone?: string; notes?: string }) => {
-    const targetGift = data.gifts.find(g => g.id === giftId);
-    if (targetGift) {
-      const updatedGift: Gift = {
-        ...targetGift,
-        isClaimed: true,
-        claimedByGuestName: claimData.guestName,
-        claimedByGuestEmail: claimData.guestEmail,
-        claimedByGuestPhone: claimData.guestPhone,
-        notes: claimData.notes
-      };
-      await saveGiftToFirestore(updatedGift);
+    const updatedGifts = data.gifts.map(g => {
+      if (g.id === giftId) {
+        return {
+          ...g,
+          isClaimed: true,
+          claimedByGuestName: claimData.guestName,
+          claimedByGuestEmail: claimData.guestEmail,
+          claimedByGuestPhone: claimData.guestPhone,
+          notes: claimData.notes
+        };
+      }
+      return g;
+    });
+
+    const activeCoupleId = selectedCoupleId || auth.currentUser?.uid || data.eventInfo.id;
+    if (activeCoupleId) {
+      await saveCoupleToFirestore(activeCoupleId, data.eventInfo, updatedGifts, data.guests);
+    } else {
+      const targetGift = updatedGifts.find(g => g.id === giftId);
+      if (targetGift) await saveGiftToFirestore(targetGift);
     }
 
     const res = await fetch(`/api/gifts/${giftId}/claim`, {
@@ -297,7 +409,14 @@ export default function App() {
       message: rsvpData.message || '',
       updatedAt: new Date().toISOString()
     };
-    await saveGuestToFirestore(newGuest);
+    const updatedGuests = [...data.guests, newGuest];
+
+    const activeCoupleId = selectedCoupleId || auth.currentUser?.uid || data.eventInfo.id;
+    if (activeCoupleId) {
+      await saveCoupleToFirestore(activeCoupleId, data.eventInfo, data.gifts, updatedGuests);
+    } else {
+      await saveGuestToFirestore(newGuest);
+    }
 
     const res = await fetch('/api/rsvp', {
       method: 'POST',
@@ -315,7 +434,14 @@ export default function App() {
   };
 
   const handleUpdateEventInfo = async (info: Partial<EventInfo>) => {
-    await saveEventInfoToFirestore(info);
+    const activeCoupleId = auth.currentUser?.uid || selectedCoupleId || data.eventInfo.id;
+    const updatedEvent: EventInfo = { ...data.eventInfo, ...info, id: activeCoupleId || data.eventInfo.id };
+
+    if (activeCoupleId) {
+      await saveCoupleToFirestore(activeCoupleId, updatedEvent, data.gifts, data.guests);
+    } else {
+      await saveEventInfoToFirestore(info);
+    }
 
     const res = await fetch('/api/event', {
       method: 'PUT',
@@ -325,7 +451,7 @@ export default function App() {
 
     if (!res.ok) throw new Error('Erro ao atualizar configurações');
     await fetchData();
-    showToast('Informações do evento salvas no Firebase!');
+    showToast('Informações do evento salvas com sucesso!');
   };
 
   const handleRegisterCouple = async (info: Partial<EventInfo>) => {
@@ -375,7 +501,22 @@ export default function App() {
       message: guestData.message || '',
       updatedAt: new Date().toISOString()
     };
-    await saveGuestToFirestore(guestObj);
+
+    const existingIndex = data.guests.findIndex(g => g.id === guestObj.id);
+    let updatedGuests: Guest[];
+    if (existingIndex >= 0) {
+      updatedGuests = [...data.guests];
+      updatedGuests[existingIndex] = guestObj;
+    } else {
+      updatedGuests = [...data.guests, guestObj];
+    }
+
+    const activeCoupleId = auth.currentUser?.uid || selectedCoupleId || data.eventInfo.id;
+    if (activeCoupleId) {
+      await saveCoupleToFirestore(activeCoupleId, data.eventInfo, data.gifts, updatedGuests);
+    } else {
+      await saveGuestToFirestore(guestObj);
+    }
 
     const method = guestData.id ? 'PUT' : 'POST';
     const url = guestData.id ? `/api/guests/${guestData.id}` : '/api/guests';
@@ -393,7 +534,13 @@ export default function App() {
 
   const handleDeleteGuest = async (id: string) => {
     if (!confirm('Tem certeza que deseja remover este convidado?')) return;
-    await deleteGuestFromFirestore(id);
+    const updatedGuests = data.guests.filter(g => g.id !== id);
+    const activeCoupleId = auth.currentUser?.uid || selectedCoupleId || data.eventInfo.id;
+    if (activeCoupleId) {
+      await saveCoupleToFirestore(activeCoupleId, data.eventInfo, data.gifts, updatedGuests);
+    } else {
+      await deleteGuestFromFirestore(id);
+    }
 
     const res = await fetch(`/api/guests/${id}`, { method: 'DELETE' });
     if (!res.ok) throw new Error('Erro ao excluir convidado');
@@ -402,8 +549,9 @@ export default function App() {
   };
 
   const handleSaveGift = async (giftData: Omit<Gift, 'id'> & { id?: string }) => {
+    const giftId = giftData.id || `gift_${Date.now()}_${Math.random().toString(36).substring(2, 6)}`;
     const giftObj: Gift = {
-      id: giftData.id || `gift_${Date.now()}_${Math.random().toString(36).substring(2, 6)}`,
+      id: giftId,
       name: giftData.name,
       category: giftData.category,
       description: giftData.description || '',
@@ -412,7 +560,22 @@ export default function App() {
       claimedByGuestName: giftData.claimedByGuestName || '',
       isCustom: !!giftData.isCustom
     };
-    await saveGiftToFirestore(giftObj);
+
+    const existingIndex = data.gifts.findIndex(g => g.id === giftId);
+    let updatedGifts: Gift[];
+    if (existingIndex >= 0) {
+      updatedGifts = [...data.gifts];
+      updatedGifts[existingIndex] = giftObj;
+    } else {
+      updatedGifts = [...data.gifts, giftObj];
+    }
+
+    const activeCoupleId = auth.currentUser?.uid || selectedCoupleId || data.eventInfo.id;
+    if (activeCoupleId) {
+      await saveCoupleToFirestore(activeCoupleId, data.eventInfo, updatedGifts, data.guests);
+    } else {
+      await saveGiftToFirestore(giftObj);
+    }
 
     const method = giftData.id ? 'PUT' : 'POST';
     const url = giftData.id ? `/api/gifts/${giftData.id}` : '/api/gifts';
@@ -430,7 +593,13 @@ export default function App() {
 
   const handleDeleteGift = async (id: string) => {
     if (!confirm('Tem certeza que deseja remover este presente da lista?')) return;
-    await deleteGiftFromFirestore(id);
+    const updatedGifts = data.gifts.filter(g => g.id !== id);
+    const activeCoupleId = auth.currentUser?.uid || selectedCoupleId || data.eventInfo.id;
+    if (activeCoupleId) {
+      await saveCoupleToFirestore(activeCoupleId, data.eventInfo, updatedGifts, data.guests);
+    } else {
+      await deleteGiftFromFirestore(id);
+    }
 
     const res = await fetch(`/api/gifts/${id}`, { method: 'DELETE' });
     if (!res.ok) throw new Error('Erro ao excluir presente');
@@ -439,6 +608,24 @@ export default function App() {
   };
 
   const handleUnclaimGift = async (id: string) => {
+    const updatedGifts = data.gifts.map(g => {
+      if (g.id === id) {
+        return {
+          ...g,
+          isClaimed: false,
+          claimedByGuestName: undefined,
+          claimedByGuestEmail: undefined,
+          claimedByGuestPhone: undefined,
+          notes: undefined
+        };
+      }
+      return g;
+    });
+    const activeCoupleId = auth.currentUser?.uid || selectedCoupleId || data.eventInfo.id;
+    if (activeCoupleId) {
+      await saveCoupleToFirestore(activeCoupleId, data.eventInfo, updatedGifts, data.guests);
+    }
+
     const res = await fetch(`/api/gifts/${id}/unclaim`, { method: 'POST' });
     if (!res.ok) throw new Error('Erro ao liberar presente');
     await fetchData();

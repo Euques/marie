@@ -371,7 +371,6 @@ export async function saveCoupleToFirestore(uid: string, eventInfo: any, gifts?:
   try {
     await ensureAuth();
     const coupleRef = doc(db, 'couples', uid);
-    const mainRef = doc(db, 'event_info', 'main');
 
     const docData = cleanForFirestore({
       id: uid,
@@ -382,9 +381,6 @@ export async function saveCoupleToFirestore(uid: string, eventInfo: any, gifts?:
       updatedAt: new Date().toISOString()
     });
     await setDoc(coupleRef, docData, { merge: true });
-    if (eventInfo) {
-      await setDoc(mainRef, cleanForFirestore({ ...eventInfo, id: uid, updatedAt: new Date().toISOString() }), { merge: true });
-    }
   } catch (e) {
     handleFirestoreError(e, OperationType.WRITE, `couples/${uid}`);
   }
