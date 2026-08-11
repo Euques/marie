@@ -3,13 +3,13 @@ import { EventInfo, Gift, GiftCategory, Guest } from '../types';
 import { GuestModal } from './GuestModal';
 import { GiftModal } from './GiftModal';
 import { CouplePhotoUploader } from './CouplePhotoUploader';
-import { firebaseConfig, testFirebaseConnection, authenticateBrideAdminWithFirebase, loginWithGoogle, saveAdminToFirestore } from '../lib/firebase';
+import { firebaseConfig, testFirebaseConnection, authenticateBrideAdminWithFirebase, loginWithGoogle, saveAdminToFirestore, saveCoupleToFirestore } from '../lib/firebase';
 import { 
   Crown, Users, Gift as GiftIcon, CheckCircle2, Clock, XCircle, X,
   Plus, Edit, Trash2, Lock, Unlock, Settings, Share2, Printer, 
   RefreshCw, Search, Filter, Copy, Check, MessageSquare, Phone, 
   Sparkles, AlertCircle, Heart, ArrowRight, ArrowLeft, Database, ExternalLink, Terminal,
-  ChevronDown, ChevronUp, Mail, Eye, EyeOff, Loader2, ShieldCheck
+  Mail, Eye, EyeOff, Loader2, ShieldCheck, ChevronDown, ChevronUp
 } from 'lucide-react';
 
 interface AdminPanelProps {
@@ -63,7 +63,6 @@ export const AdminPanel: React.FC<AdminPanelProps> = ({
   const [adminAuthMode, setAdminAuthMode] = useState<'login' | 'register'>('login');
   const [adminLoadingAuth, setAdminLoadingAuth] = useState(false);
   const [showAdminPassword, setShowAdminPassword] = useState(false);
-  const [useLocalPasscode, setUseLocalPasscode] = useState(false);
 
   // Active admin tab
   const [activeTab, setActiveTab] = useState<'dashboard' | 'guests' | 'gifts' | 'settings' | 'invite' | 'firebase'>('dashboard');
@@ -104,17 +103,6 @@ export const AdminPanel: React.FC<AdminPanelProps> = ({
   const [copiedInvite, setCopiedInvite] = useState(false);
   const [resetConfirming, setResetConfirming] = useState(false);
 
-  // Authenticate handler (Local Passcode)
-  const handleAuthSubmit = (e: React.FormEvent) => {
-    e.preventDefault();
-    if (passwordInput === eventInfo.adminPassword || passwordInput === '1234') {
-      setIsAuthenticated(true);
-      setAuthError('');
-    } else {
-      setAuthError('Senha incorreta! A senha padrão é 1234.');
-    }
-  };
-
   // Firebase Admin Auth Handlers
   const handleAdminFirebaseAuthSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -131,7 +119,8 @@ export const AdminPanel: React.FC<AdminPanelProps> = ({
     setAdminLoadingAuth(true);
 
     try {
-      await authenticateBrideAdminWithFirebase(adminEmail.trim(), adminPassword.trim(), adminAuthMode);
+      const user = await authenticateBrideAdminWithFirebase(adminEmail.trim(), adminPassword.trim(), adminAuthMode);
+      await saveCoupleToFirestore(user.uid, eventInfo, gifts, guests);
       setIsAuthenticated(true);
       setAuthError('');
     } catch (err: any) {
@@ -148,17 +137,14 @@ export const AdminPanel: React.FC<AdminPanelProps> = ({
     try {
       const user = await loginWithGoogle();
       await saveAdminToFirestore(user, 'bride_admin');
+      await saveCoupleToFirestore(user.uid, eventInfo, gifts, guests);
       setIsAuthenticated(true);
     } catch (err: any) {
       console.error('Google Admin Auth Error:', err);
       if (err.code === 'auth/popup-closed-by-user') {
         setAuthError('Login com Google cancelado.');
-      } else if (err.code === 'auth/unauthorized-domain') {
-        setAuthError('Autenticação rápida indisponível neste domínio. Utilize o formulário de E-mail e Senha abaixo ou a Senha Padrão (1234):');
-        setUseLocalPasscode(true);
       } else {
-        setAuthError('Erro na autenticação do Google. Tente com E-mail e Senha abaixo ou com a Senha Padrão (1234):');
-        setUseLocalPasscode(true);
+        setAuthError('Erro na autenticação do Google. Tente com E-mail e Senha abaixo.');
       }
     } finally {
       setAdminLoadingAuth(false);
@@ -385,37 +371,6 @@ export const AdminPanel: React.FC<AdminPanelProps> = ({
               <span>{adminLoadingAuth ? 'Acessando...' : adminAuthMode === 'register' ? 'Cadastrar e Acessar Painel' : 'Acessar Painel do Casal'}</span>
             </button>
           </form>
-
-          {/* ACCORDION / TOGGLE FOR LOCAL PASSCODE FALLBACK */}
-          <div className="pt-4 border-t border-[#E5DFD5] text-left">
-            <button
-              type="button"
-              onClick={() => setUseLocalPasscode(!useLocalPasscode)}
-              className="text-xs font-bold text-[#C5A059] hover:underline flex items-center justify-between w-full cursor-pointer py-1"
-            >
-              <span>Acessar com Senha Padrão (1234)</span>
-              {useLocalPasscode ? <ChevronUp className="w-4 h-4" /> : <ChevronDown className="w-4 h-4" />}
-            </button>
-
-            {useLocalPasscode && (
-              <form onSubmit={handleAuthSubmit} className="mt-3 space-y-3 pt-3 border-t border-dashed border-[#E5DFD5]">
-                <input 
-                  type="password"
-                  placeholder="Senha Padrão (1234)"
-                  value={passwordInput}
-                  onChange={e => setPasswordInput(e.target.value)}
-                  className="w-full px-4 py-3 text-base sm:text-xs border border-[#E5DFD5] bg-white rounded-xl outline-none font-sans"
-                />
-                <button
-                  type="submit"
-                  className="w-full py-3 bg-[#F2ECE4] hover:bg-[#E5DFD5] text-[#2D2D2D] font-bold text-xs uppercase tracking-wider rounded-xl transition flex items-center justify-center space-x-2 cursor-pointer active:scale-95"
-                >
-                  <Unlock className="w-4 h-4 text-[#C5A059]" />
-                  <span>Entrar com Senha Padrão</span>
-                </button>
-              </form>
-            )}
-          </div>
 
         </div>
       </div>

@@ -104,7 +104,6 @@ export function subscribeToAuthChanges(callback: (user: FirebaseUser | null) => 
 export async function saveAdminToFirestore(user: FirebaseUser, role: string = 'bride_admin') {
   try {
     const adminRef = doc(db, 'admins', user.uid);
-    await getDocFromServer(doc(db, 'test', 'connection')).catch(() => {});
     const docData = {
       uid: user.uid,
       email: user.email,
@@ -115,7 +114,39 @@ export async function saveAdminToFirestore(user: FirebaseUser, role: string = 'b
     const { setDoc } = await import('firebase/firestore');
     await setDoc(adminRef, docData, { merge: true });
   } catch (e) {
-    console.warn('Note: Could not save admin record directly to Firestore (permissions or offline), proceeding with Firebase Auth session:', e);
+    console.warn('Note: Firestore admin save warning:', e);
+  }
+}
+
+export async function saveCoupleToFirestore(uid: string, eventInfo: any, gifts?: any[], guests?: any[]) {
+  try {
+    const coupleRef = doc(db, 'couples', uid);
+    const { setDoc } = await import('firebase/firestore');
+    const docData = {
+      uid,
+      eventInfo,
+      gifts: gifts || [],
+      guests: guests || [],
+      updatedAt: new Date().toISOString()
+    };
+    await setDoc(coupleRef, docData, { merge: true });
+  } catch (e) {
+    console.warn('Note: Could not save couple record to Firestore:', e);
+  }
+}
+
+export async function getCoupleFromFirestore(uid: string) {
+  try {
+    const coupleRef = doc(db, 'couples', uid);
+    const { getDoc } = await import('firebase/firestore');
+    const docSnap = await getDoc(coupleRef);
+    if (docSnap.exists()) {
+      return docSnap.data();
+    }
+    return null;
+  } catch (e) {
+    console.warn('Note: Could not read couple record from Firestore:', e);
+    return null;
   }
 }
 
