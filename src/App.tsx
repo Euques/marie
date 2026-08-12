@@ -266,15 +266,31 @@ export default function App() {
         }
       }
 
-      // If a specific couple is selected (from URL or selection)
-      if (selectedCoupleId) {
-        const found = couplesList.find(c => c.id === selectedCoupleId);
+      // If a specific couple is requested via URL parameter or selection
+      const urlParams = new URLSearchParams(window.location.search);
+      const urlCoupleId = urlParams.get('casal') || urlParams.get('couple') || urlParams.get('c');
+      const targetCoupleId = urlCoupleId || selectedCoupleId;
+
+      if (targetCoupleId) {
+        let found = couplesList.find(c => c.id === targetCoupleId);
+        if (!found) {
+          try {
+            const directRecord = await getCoupleFromFirestore(targetCoupleId);
+            if (directRecord && directRecord.eventInfo) {
+              found = directRecord;
+            }
+          } catch (e) {
+            console.warn('Could not load target couple directly from Firestore:', e);
+          }
+        }
+
         if (found) {
           setData({
             eventInfo: found.eventInfo,
             gifts: found.gifts || [],
             guests: found.guests || []
           });
+          setSelectedCoupleId(targetCoupleId);
           setLoading(false);
           return;
         }

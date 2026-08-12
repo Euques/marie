@@ -74,131 +74,35 @@ export const HeaderNav: React.FC<HeaderNavProps> = ({
             )}
           </div>
 
-          {/* Desktop Navigation Links */}
-          <nav className="hidden md:flex items-center space-x-1 lg:space-x-2">
-            
-            <button
-              onClick={() => handleNavClick('home')}
-              className={`px-3 py-2 rounded-xl text-xs font-extrabold transition-all flex items-center space-x-1.5 cursor-pointer ${
-                currentRoute === 'home'
-                  ? 'bg-[#2D2D2D] text-white shadow-xs'
-                  : 'text-[#2D2D2D]/75 hover:bg-[#F2ECE4] hover:text-[#2D2D2D]'
-              }`}
-            >
-              <Home className="w-3.5 h-3.5" />
-              <span>Início</span>
-            </button>
-
-            {!isPlatformRoute && (
-              <>
-                <button
-                  onClick={() => handleNavClick('casal')}
-                  className={`px-3 py-2 rounded-xl text-xs font-extrabold transition-all flex items-center space-x-1.5 cursor-pointer ${
-                    currentRoute === 'casal'
-                      ? 'bg-[#2D2D2D] text-white shadow-xs'
-                      : 'text-[#2D2D2D]/75 hover:bg-[#F2ECE4] hover:text-[#2D2D2D]'
-                  }`}
-                >
-                  <Heart className="w-3.5 h-3.5 text-rose-500 fill-current" />
-                  <span>O Casal</span>
-                </button>
-
-                <button
-                  onClick={() => handleNavClick('presentes')}
-                  className={`px-3 py-2 rounded-xl text-xs font-extrabold transition-all flex items-center space-x-1.5 cursor-pointer relative ${
-                    currentRoute === 'presentes'
-                      ? 'bg-[#2D2D2D] text-white shadow-xs'
-                      : 'text-[#2D2D2D]/75 hover:bg-[#F2ECE4] hover:text-[#2D2D2D]'
-                  }`}
-                >
-                  <Gift className="w-3.5 h-3.5 text-[#C5A059]" />
-                  <span>Presentes</span>
-                  {availableGiftsCount > 0 && (
-                    <span className="ml-1 bg-[#C5A059] text-white text-[10px] font-black px-1.5 py-0.2 rounded-full">
-                      {availableGiftsCount}
-                    </span>
-                  )}
-                </button>
-              </>
-            )}
-
-            <button
-              onClick={() => handleNavClick('login')}
-              className={`px-3 py-2 rounded-xl text-xs font-extrabold transition-all flex items-center space-x-1.5 cursor-pointer ${
-                currentRoute === 'login'
-                  ? 'bg-[#2D2D2D] text-white shadow-xs'
-                  : 'text-[#2D2D2D]/75 hover:bg-[#F2ECE4] hover:text-[#2D2D2D]'
-              }`}
-            >
-              {guestSession ? (
-                <>
-                  <UserCheck className="w-3.5 h-3.5 text-emerald-600" />
-                  <span className="truncate max-w-[100px]">{guestSession.name.split(' ')[0]}</span>
-                </>
-              ) : (
-                <>
-                  <User className="w-3.5 h-3.5 text-[#2D2D2D]/60" />
-                  <span>Entrar</span>
-                </>
-              )}
-            </button>
-
-            <button
-              onClick={() => handleNavClick('noiva')}
-              className={`px-3 py-2 rounded-xl text-xs font-extrabold transition-all flex items-center space-x-1.5 cursor-pointer ${
-                currentRoute === 'noiva'
-                  ? 'bg-[#C5A059] text-white shadow-xs'
-                  : isCoupleAdmin
-                    ? 'bg-[#F2ECE4] text-[#C5A059] hover:bg-[#E5DFD5]'
-                    : 'text-[#2D2D2D]/75 hover:bg-[#F2ECE4] hover:text-[#2D2D2D]'
-              }`}
-            >
-              <Crown className="w-3.5 h-3.5 text-amber-500" />
-              <span>Painel Noivos</span>
-            </button>
-
-            {isSuperAdmin && (
-              <button
-                onClick={() => handleNavClick('superadmin')}
-                className={`px-3 py-2 rounded-xl text-xs font-extrabold transition-all flex items-center space-x-1.5 cursor-pointer ${
-                  currentRoute === 'superadmin'
-                    ? 'bg-amber-500 text-white shadow-xs'
-                    : 'bg-[#1E1E1E] text-amber-400 hover:bg-black'
-                }`}
-              >
-                <Terminal className="w-3.5 h-3.5" />
-                <span>Super Admin</span>
-              </button>
-            )}
-
-          </nav>
-
-          {/* Action Buttons (Right) */}
+          {/* Universal Hamburger / Sandwich Menu Toggle */}
           <div className="flex items-center space-x-2">
-            
-            {/* Mobile Hamburger Toggle Button */}
             <button
               onClick={() => setMobileMenuOpen(!mobileMenuOpen)}
-              className="md:hidden p-2.5 text-[#2D2D2D] bg-white hover:bg-[#F2ECE4] rounded-xl border border-[#E5DFD5] shadow-2xs transition-all active:scale-95 cursor-pointer min-h-[40px] min-w-[40px] flex items-center justify-center"
+              className="p-2.5 px-3.5 text-[#2D2D2D] bg-[#FAF9F6] hover:bg-[#F2ECE4] rounded-2xl border border-[#E5DFD5] hover:border-[#C5A059] shadow-2xs transition-all active:scale-95 cursor-pointer flex items-center space-x-2 font-bold text-xs"
               aria-label="Abrir Menu de Navegação"
             >
               {mobileMenuOpen ? (
-                <X className="w-5 h-5 text-[#2D2D2D]" />
+                <>
+                  <X className="w-5 h-5 text-[#2D2D2D]" />
+                  <span className="hidden sm:inline text-xs font-bold">Fechar</span>
+                </>
               ) : (
-                <Menu className="w-5 h-5 text-[#2D2D2D]" />
+                <>
+                  <Menu className="w-5 h-5 text-[#2D2D2D]" />
+                  <span className="hidden sm:inline text-xs font-bold">Menu</span>
+                </>
               )}
             </button>
-
           </div>
 
         </div>
       </div>
 
-      {/* MOBILE MENU DRAWER / DROPDOWN */}
+      {/* UNIVERSAL DROPDOWN / MENU DRAWER FOR ALL SCREEN SIZES */}
       {mobileMenuOpen && (
-        <div className="md:hidden bg-white border-b border-[#E5DFD5] shadow-xl animate-fade-in divide-y divide-[#E5DFD5]/60">
+        <div className="bg-white border-b border-[#E5DFD5] shadow-xl animate-fade-in divide-y divide-[#E5DFD5]/60 max-w-6xl mx-auto">
           
-          {/* Active Status Header in Mobile */}
+          {/* Active Status Header */}
           <div className="px-5 py-3.5 bg-[#FAF9F6] flex items-center justify-between text-xs">
             <span className="text-[#2D2D2D]/60 font-medium">Sessão Atual:</span>
             {isSuperAdmin ? (

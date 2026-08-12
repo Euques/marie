@@ -2,6 +2,7 @@ import React, { useState, useMemo, useEffect } from 'react';
 import { EventInfo, Gift, GiftCategory, Guest } from '../types';
 import { GuestModal } from './GuestModal';
 import { GiftModal } from './GiftModal';
+import { GiftCatalogModal } from './GiftCatalogModal';
 import { CouplePhotoUploader } from './CouplePhotoUploader';
 import { firebaseConfig, testFirebaseConnection, authenticateBrideAdminWithFirebase, loginWithGoogle, saveAdminToFirestore, saveCoupleToFirestore, getCoupleFromFirestore, auth, subscribeToAuthChanges, syncAllToFirestore, signOut } from '../lib/firebase';
 import { 
@@ -109,6 +110,7 @@ export const AdminPanel: React.FC<AdminPanelProps> = ({
 
   const [selectedGiftForEdit, setSelectedGiftForEdit] = useState<Gift | null>(null);
   const [isGiftModalOpen, setIsGiftModalOpen] = useState(false);
+  const [isCatalogModalOpen, setIsCatalogModalOpen] = useState(false);
 
   const [isCoupleDrawerOpen, setIsCoupleDrawerOpen] = useState(false);
   const [isMenuAccordionOpen, setIsMenuAccordionOpen] = useState(false);
@@ -296,9 +298,11 @@ export const AdminPanel: React.FC<AdminPanelProps> = ({
   };
 
   const getWhatsAppMessage = (guestName?: string) => {
-    const link = window.location.origin;
+    const coupleId = eventInfo.id || auth.currentUser?.uid || '';
+    const link = coupleId ? `${window.location.origin}/?casal=${coupleId}` : window.location.origin;
     const nameStr = guestName ? `Olá, ${guestName}! ` : '';
-    return `*Convite Especial de Chá de Panela* 🎉\n\n${nameStr}Você está convidado(a) para o *${eventInfo.eventTitle}* de *${eventInfo.brideName} & ${eventInfo.groomName}*!\n\n📅 *Data:* ${eventInfo.date}\n⏰ *Horário:* ${eventInfo.time}h\n📍 *Local:* ${eventInfo.location}\n\nAcesse nosso site para confirmar sua presença e escolher um presente da lista:\n👉 ${link}`;
+    const brideGroom = eventInfo.brideName ? `${eventInfo.brideName}${eventInfo.groomName ? ` & ${eventInfo.groomName}` : ''}` : 'Noivos';
+    return `*Convite Especial de Chá de Panela* 🎉\n\n${nameStr}Você está convidado(a) para o *${eventInfo.eventTitle || 'Chá de Panela'}* de *${brideGroom}*!\n\n📅 *Data:* ${eventInfo.date || 'A definir'}\n⏰ *Horário:* ${eventInfo.time || 'A definir'}\n📍 *Local:* ${eventInfo.location || 'A definir'}\n\nAcesse nosso site exclusivo para confirmar sua presença e escolher um presente da lista:\n👉 ${link}`;
   };
 
   const handleCopyWhatsAppInvite = (guestName?: string) => {
@@ -501,43 +505,93 @@ export const AdminPanel: React.FC<AdminPanelProps> = ({
 
   return (
     <div className="space-y-8 pb-16">
-      {/* Top Admin Status Banner */}
-      <div className="no-print bg-[#2D2D2D] text-white p-5 rounded-3xl shadow-sm flex flex-col sm:flex-row items-center justify-between gap-4">
-        <div className="flex items-center space-x-3">
-          <div className="p-3 bg-[#F2ECE4]/10 text-[#C5A059] rounded-2xl shadow-2xs">
-            <Crown className="w-5 h-5" />
+      {/* CARD DE IDENTIFICAÇÃO DO USUÁRIO LOGADO / NOIVA */}
+      <div className="no-print bg-white rounded-3xl p-5 sm:p-6 border border-[#E5DFD5] shadow-xs space-y-4">
+        <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4">
+          
+          {/* Esquerda: Avatar, Nome e E-mail */}
+          <div className="flex items-center space-x-3.5 min-w-0">
+            <div className="w-12 h-12 rounded-2xl bg-[#2D2D2D] text-[#C5A059] font-serif font-bold text-xl flex items-center justify-center shrink-0 shadow-xs border border-[#C5A059]/30">
+              {(auth.currentUser?.displayName || eventInfo.brideName || adminEmail || 'N').charAt(0).toUpperCase()}
+            </div>
+
+            <div className="min-w-0 space-y-0.5">
+              <div className="flex items-center space-x-2 flex-wrap">
+                <h3 className="font-serif font-bold text-base sm:text-lg text-[#2D2D2D] truncate">
+                  {auth.currentUser?.displayName || (eventInfo.brideName ? `${eventInfo.brideName}${eventInfo.groomName ? ` & ${eventInfo.groomName}` : ''}` : 'Painel do Casal')}
+                </h3>
+
+                {isSuperAdmin ? (
+                  <span className="px-2.5 py-0.5 rounded-full text-[9px] font-extrabold uppercase tracking-wider bg-purple-100 text-purple-900 border border-purple-200 shrink-0">
+                    👑 Super Admin
+                  </span>
+                ) : (
+                  <span className="px-2.5 py-0.5 rounded-full text-[9px] font-extrabold uppercase tracking-wider bg-[#F2ECE4] text-[#2D2D2D] border border-[#E5DFD5] shrink-0">
+                    💍 Conta do Casal
+                  </span>
+                )}
+              </div>
+
+              <p className="text-xs text-[#2D2D2D]/70 font-sans truncate flex items-center space-x-1.5">
+                <Mail className="w-3.5 h-3.5 text-[#C5A059] shrink-0" />
+                <span className="truncate">{auth.currentUser?.email || adminEmail || 'E-mail não informado'}</span>
+              </p>
+            </div>
           </div>
-          <div>
-            <h2 className="text-base sm:text-lg font-bold">Painel Administrativo da Noiva</h2>
-            <p className="text-xs text-[#E5DFD5]/70 font-sans">
-              Noivos: <span className="text-[#C5A059] font-semibold">{eventInfo.brideName || 'Noiva'} & {eventInfo.groomName || 'Noivo'}</span>
-            </p>
+
+          {/* Direita: Status do Usuário & Ações */}
+          <div className="flex flex-wrap items-center gap-2 self-stretch sm:self-auto justify-start sm:justify-end">
+            <div className="px-3 py-1.5 bg-emerald-50 text-emerald-800 border border-emerald-200/80 rounded-xl text-xs font-bold flex items-center space-x-1.5 shadow-2xs">
+              <span className="w-2 h-2 rounded-full bg-emerald-500 animate-pulse" />
+              <span>Status: Conectado</span>
+            </div>
+
+            <button
+              onClick={() => setIsCoupleDrawerOpen(true)}
+              className="px-3.5 py-1.5 bg-[#C5A059] hover:bg-[#B38F48] text-white text-xs font-bold rounded-xl transition flex items-center space-x-1 cursor-pointer active:scale-95 shadow-2xs"
+            >
+              <Heart className="w-3.5 h-3.5 fill-current" />
+              <span>Noivos</span>
+            </button>
+
+            <button
+              onClick={() => window.print()}
+              className="px-3.5 py-1.5 bg-[#FAF9F6] hover:bg-[#F2ECE4] text-[#2D2D2D] border border-[#E5DFD5] text-xs font-bold rounded-xl transition flex items-center space-x-1 cursor-pointer active:scale-95"
+            >
+              <Printer className="w-3.5 h-3.5 text-[#C5A059]" />
+              <span className="hidden sm:inline">Imprimir</span>
+            </button>
+
+            <button
+              onClick={handleCoupleLogout}
+              className="px-3.5 py-1.5 bg-rose-50 hover:bg-rose-100 text-rose-800 border border-rose-200/80 rounded-xl text-xs font-bold transition flex items-center space-x-1 cursor-pointer active:scale-95"
+            >
+              <Lock className="w-3.5 h-3.5" />
+              <span>Sair</span>
+            </button>
           </div>
         </div>
 
-        <div className="flex flex-wrap items-center gap-2">
-          <button
-            onClick={() => setIsCoupleDrawerOpen(true)}
-            className="px-4 py-2 bg-[#C5A059] hover:bg-[#B38F48] text-white text-[10px] font-bold uppercase tracking-widest rounded-xl transition-all flex items-center space-x-1.5 active:scale-95 shadow-xs"
-          >
-            <Heart className="w-3.5 h-3.5 fill-current" />
-            <span>Painel dos Noivos</span>
-          </button>
+        {/* Link Exclusivo do Casal para os Convidados */}
+        <div className="bg-[#FAF9F6] p-3 rounded-2xl border border-[#E5DFD5] flex flex-col sm:flex-row items-center justify-between gap-2.5 text-xs">
+          <div className="flex items-center space-x-2 min-w-0 w-full sm:w-auto">
+            <Share2 className="w-4 h-4 text-[#C5A059] shrink-0" />
+            <span className="font-bold text-[#2D2D2D] shrink-0">Link Único para Convidados:</span>
+            <span className="font-mono text-[11px] text-[#2D2D2D]/70 truncate bg-white px-2.5 py-1 rounded-lg border border-[#E5DFD5] w-full sm:w-auto">
+              {`${window.location.origin}/?casal=${eventInfo.id || auth.currentUser?.uid || ''}`}
+            </span>
+          </div>
 
           <button
-            onClick={() => window.print()}
-            className="px-4 py-2 bg-[#FAF9F6]/10 hover:bg-[#FAF9F6]/20 text-white text-[10px] font-bold uppercase tracking-widest rounded-xl transition-all flex items-center space-x-1.5 active:scale-95"
+            type="button"
+            onClick={() => {
+              const url = `${window.location.origin}/?casal=${eventInfo.id || auth.currentUser?.uid || ''}`;
+              navigator.clipboard.writeText(url);
+              alert('Link exclusivo do casal copiado! Envie aos convidados para que vejam apenas a sua lista.');
+            }}
+            className="px-3.5 py-1.5 bg-[#2D2D2D] hover:bg-black text-white text-[10px] font-bold uppercase tracking-wider rounded-xl transition cursor-pointer shrink-0 w-full sm:w-auto text-center shadow-2xs active:scale-95"
           >
-            <Printer className="w-3.5 h-3.5 text-[#C5A059]" />
-            <span className="hidden sm:inline">Imprimir</span>
-          </button>
-
-          <button
-            onClick={handleCoupleLogout}
-            className="px-4 py-2 bg-rose-950/80 hover:bg-rose-900 text-rose-200 text-[10px] font-bold uppercase tracking-widest rounded-xl transition-all flex items-center space-x-1.5 active:scale-95 cursor-pointer"
-          >
-            <Lock className="w-3.5 h-3.5" />
-            <span>Sair</span>
+            Copiar Link
           </button>
         </div>
       </div>
@@ -1069,19 +1123,13 @@ export const AdminPanel: React.FC<AdminPanelProps> = ({
             </div>
 
             <div className="flex flex-wrap items-center gap-2 self-start sm:self-auto">
-              {onImportTemplateGifts && (
-                <button
-                  onClick={() => {
-                    if (gifts.length > 0 && !confirm('Sua lista já possui itens. Deseja carregar as 20 sugestões padrão de presentes?')) return;
-                    onImportTemplateGifts();
-                  }}
-                  className="px-3.5 py-2.5 bg-[#F2ECE4] hover:bg-[#E5DFD5] text-[#2D2D2D] font-bold text-[10px] uppercase tracking-wider rounded-2xl border border-[#E5DFD5] transition flex items-center space-x-1.5 cursor-pointer active:scale-95 shadow-2xs"
-                  title="Carregar 20 sugestões prontas de presentes"
-                >
-                  <Sparkles className="w-3.5 h-3.5 text-[#C5A059]" />
-                  <span>Carregar 20 Sugestões</span>
-                </button>
-              )}
+              <button
+                onClick={() => setIsCatalogModalOpen(true)}
+                className="px-4 py-2.5 bg-[#C5A059] hover:bg-[#B38F48] text-white font-bold text-[10px] uppercase tracking-[0.15em] rounded-2xl shadow-xs transition-all flex items-center space-x-1.5 cursor-pointer active:scale-95"
+              >
+                <Sparkles className="w-4 h-4 text-white" />
+                <span>Escolher das Sugestões</span>
+              </button>
 
               {onClearGifts && gifts.length > 0 && (
                 <button
@@ -1163,23 +1211,34 @@ export const AdminPanel: React.FC<AdminPanelProps> = ({
                   {filteredGifts.length === 0 ? (
                     <tr>
                       <td colSpan={5} className="p-10 text-center">
-                        <div className="max-w-sm mx-auto space-y-3">
+                        <div className="max-w-md mx-auto space-y-3">
                           <div className="w-12 h-12 bg-[#F2ECE4] text-[#C5A059] rounded-2xl flex items-center justify-center mx-auto shadow-2xs">
                             <GiftIcon className="w-6 h-6" />
                           </div>
                           <h4 className="font-serif italic font-bold text-lg text-[#2D2D2D]">Sua lista de presentes está vazia</h4>
                           <p className="text-xs text-[#2D2D2D]/60 font-sans leading-relaxed">
-                            Cadastre seus presentes manualmente ou carregue a lista com 20 sugestões padrão de Chá de Panela com 1 clique.
+                            Você pode abrir o catálogo e escolher individualmente os presentes desejados ou cadastrar um item personalizado.
                           </p>
-                          {onImportTemplateGifts && (
+                          <div className="flex flex-wrap items-center justify-center gap-2 pt-1">
                             <button
-                              onClick={() => onImportTemplateGifts()}
-                              className="mt-2 px-4 py-2.5 bg-[#2D2D2D] hover:bg-black text-white font-bold text-[10px] uppercase tracking-wider rounded-xl transition flex items-center justify-center space-x-1.5 mx-auto cursor-pointer shadow-xs active:scale-95"
+                              onClick={() => setIsCatalogModalOpen(true)}
+                              className="px-4 py-2.5 bg-[#2D2D2D] hover:bg-black text-white font-bold text-[10px] uppercase tracking-wider rounded-xl transition flex items-center space-x-1.5 cursor-pointer shadow-xs active:scale-95"
                             >
                               <Sparkles className="w-3.5 h-3.5 text-[#C5A059]" />
-                              <span>Carregar 20 Sugestões Padrão</span>
+                              <span>Abrir Catálogo de Sugestões</span>
                             </button>
-                          )}
+                            
+                            <button
+                              onClick={() => {
+                                setSelectedGiftForEdit(null);
+                                setIsGiftModalOpen(true);
+                              }}
+                              className="px-4 py-2.5 bg-[#F2ECE4] hover:bg-[#E5DFD5] text-[#2D2D2D] font-bold text-[10px] uppercase tracking-wider rounded-xl border border-[#E5DFD5] transition flex items-center space-x-1.5 cursor-pointer active:scale-95"
+                            >
+                              <Plus className="w-3.5 h-3.5 text-[#C5A059]" />
+                              <span>Novo Presente Manual</span>
+                            </button>
+                          </div>
                         </div>
                       </td>
                     </tr>
