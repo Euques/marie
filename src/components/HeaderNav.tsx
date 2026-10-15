@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import { Share2, Home, Heart, Gift, User, Crown, Terminal, Menu, X, UserCheck, Sparkles, Check } from 'lucide-react';
+import { Share2, Home, Heart, Gift, User, Crown, Terminal, Menu, X, UserCheck, Sparkles, Check, Lock } from 'lucide-react';
 import { AppRoute, EventInfo, GuestAuthSession } from '../types';
 
 interface HeaderNavProps {
@@ -10,6 +10,7 @@ interface HeaderNavProps {
   onCopyLink: () => void;
   copiedLink: boolean;
   availableGiftsCount: number;
+  isPresenceConfirmed?: boolean;
 }
 
 export const HeaderNav: React.FC<HeaderNavProps> = ({
@@ -20,6 +21,7 @@ export const HeaderNav: React.FC<HeaderNavProps> = ({
   onCopyLink,
   copiedLink,
   availableGiftsCount,
+  isPresenceConfirmed = false,
 }) => {
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
 
@@ -167,12 +169,22 @@ export const HeaderNav: React.FC<HeaderNavProps> = ({
                   }`}
                 >
                   <div className="flex items-center space-x-3">
-                    <Gift className="w-4 h-4 text-[#C5A059]" />
+                    {isPresenceConfirmed || isCoupleAdmin || isSuperAdmin ? (
+                      <Gift className="w-4 h-4 text-[#C5A059]" />
+                    ) : (
+                      <Lock className="w-4 h-4 text-amber-600" />
+                    )}
                     <span>Lista de Presentes</span>
                   </div>
-                  {availableGiftsCount > 0 && (
-                    <span className="bg-[#C5A059] text-white text-xs font-black px-2.5 py-0.5 rounded-full">
-                      {availableGiftsCount} disponíveis
+                  {isPresenceConfirmed || isCoupleAdmin || isSuperAdmin ? (
+                    availableGiftsCount > 0 && (
+                      <span className="bg-[#C5A059] text-white text-xs font-black px-2.5 py-0.5 rounded-full">
+                        {availableGiftsCount} disponíveis
+                      </span>
+                    )
+                  ) : (
+                    <span className="bg-amber-100 text-amber-800 text-[10px] font-bold px-2 py-0.5 rounded-full border border-amber-200">
+                      Requer Presença
                     </span>
                   )}
                 </button>

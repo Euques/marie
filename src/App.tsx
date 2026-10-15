@@ -14,6 +14,8 @@ import {
   logoutFirebase, 
   getCoupleFromFirestore, 
   saveCoupleToFirestore,
+  updateCoupleGiftsInFirestore,
+  subscribeToCoupleRealtime,
   saveEventInfoToFirestore, 
   saveGiftToFirestore, 
   deleteGiftFromFirestore, 
@@ -66,7 +68,15 @@ const getPathFromRoute = (route: AppRoute, data?: AppData): string => {
 export default function App() {
   const [data, setData] = useState<AppData>(initialData);
   const [registeredCouples, setRegisteredCouples] = useState<CoupleProfile[]>([]);
-  const [selectedCoupleId, setSelectedCoupleId] = useState<string | null>(null);
+  const [selectedCoupleId, setSelectedCoupleId] = useState<string | null>(() => {
+    if (typeof window !== 'undefined') {
+      const urlParams = new URLSearchParams(window.location.search);
+      const urlCouple = urlParams.get('casal') || urlParams.get('couple') || urlParams.get('c');
+      if (urlCouple) return urlCouple;
+      return localStorage.getItem('cha_selected_couple_id') || null;
+    }
+    return null;
+  });
   const [loading, setLoading] = useState(true);
   const [copiedLink, setCopiedLink] = useState(false);
   const [toastMessage, setToastMessage] = useState<string | null>(null);
@@ -121,58 +131,87 @@ export default function App() {
           console.error(err);
         }
 
-        // Fetch couple record created with this UID in Firestore
-        try {
-          const coupleRecord = await getCoupleFromFirestore(firebaseUser.uid);
-          if (coupleRecord && coupleRecord.eventInfo) {
-            setData({
-              eventInfo: coupleRecord.eventInfo,
-              gifts: coupleRecord.gifts || [],
-              guests: coupleRecord.guests || []
-            });
-            setSelectedCoupleId(firebaseUser.uid);
-          } else if (sessionStorage.getItem('cha_couple_authenticated') === 'true') {
-            // New couple profile initialization with clean empty fields
-            const brideDefault = firebaseUser.displayName?.split(' ')[0] || firebaseUser.email?.split('@')[0] || '';
-            const newEventInfo: EventInfo = {
-              id: firebaseUser.uid,
-              brideName: brideDefault,
-              groomName: '',
-              eventTitle: brideDefault ? `Chá de Panela de ${brideDefault}` : '',
-              date: '',
-              time: '',
-              location: '',
-              description: '',
-              coverImage: '',
-              pixKey: '',
-              pixName: firebaseUser.displayName || ''
-            };
-            const newGifts: Gift[] = [];
-            const newGuests: Guest[] = [];
+        // ONLY manage couple profile if user is explicitly authenticated as couple admin
+        const isCoupleAuth = sessionStorage.getItem('cha_couple_authenticated') === 'true';
+        if (isCoupleAuth) {
+          try {
+            const coupleRecord = await getCoupleFromFirestore(firebaseUser.uid);
+            if (coupleRecord && coupleRecord.eventInfo) {
+              setData({
+                eventInfo: coupleRecord.eventInfo,
+                gifts: coupleRecord.gifts || [],
+                guests: coupleRecord.guests || []
+              });
+              setSelectedCoupleId(firebaseUser.uid);
+              localStorage.setItem('cha_selected_couple_id', firebaseUser.uid);
+            } else {
+              // New couple profile initialization with clean empty fields
+              const brideDefault = firebaseUser.displayName?.split(' ')[0] || firebaseUser.email?.split('@')[0] || '';
+              const newEventInfo: EventInfo = {
+                id: firebaseUser.uid,
+                brideName: brideDefault,
+                groomName: '',
+                eventTitle: brideDefault ? `Chá de Panela de ${brideDefault}` : '',
+                date: '',
+                time: '',
+                location: '',
+                description: '',
+                coverImage: '',
+                pixKey: '',
+                pixName: firebaseUser.displayName || ''
+              };
+              const newGifts: Gift[] = [];
+              const newGuests: Guest[] = [];
 
-            await saveCoupleToFirestore(firebaseUser.uid, newEventInfo, newGifts, newGuests);
-            
-            setData({
-              eventInfo: newEventInfo,
-              gifts: newGifts,
-              guests: newGuests
-            });
-            setSelectedCoupleId(firebaseUser.uid);
+              await saveCoupleToFirestore(firebaseUser.uid, newEventInfo, newGifts, newGuests);
+              
+              setData({
+                eventInfo: newEventInfo,
+                gifts: newGifts,
+                guests: newGuests
+              });
+              setSelectedCoupleId(firebaseUser.uid);
+              localStorage.setItem('cha_selected_couple_id', firebaseUser.uid);
 
-            const updatedCouples = await getAllCouplesFromFirestore();
-            setRegisteredCouples(updatedCouples);
+              const updatedCouples = await getAllCouplesFromFirestore();
+              setRegisteredCouples(updatedCouples);
+            }
+          } catch (err) {
+            console.warn('Could not load couple record from Firestore:', err);
           }
-        } catch (err) {
-          console.warn('Could not load couple record from Firestore:', err);
         }
       }
     });
     return () => unsubscribe();
   }, []);
 
+  // Real-time synchronization: listen for live changes to the current couple's gifts
+  useEffect(() => {
+    const activeId = selectedCoupleId || (data.eventInfo && data.eventInfo.id !== 'main' ? data.eventInfo.id : null);
+    if (!activeId) return;
+
+    const unsub = subscribeToCoupleRealtime(activeId, (coupleRecord) => {
+      if (coupleRecord) {
+        setData(prev => ({
+          ...prev,
+          eventInfo: coupleRecord.eventInfo || prev.eventInfo,
+          gifts: coupleRecord.gifts || prev.gifts,
+          guests: coupleRecord.guests || prev.guests
+        }));
+      }
+    });
+
+    return () => unsub();
+  }, [selectedCoupleId, data.eventInfo?.id]);
+
   const navigate = (route: AppRoute) => {
-    const path = getPathFromRoute(route, data);
-    if (window.location.pathname !== path) {
+    let path = getPathFromRoute(route, data);
+    const activeId = selectedCoupleId || (data.eventInfo && data.eventInfo.id !== 'main' ? data.eventInfo.id : null);
+    if (activeId && route !== 'home' && route !== 'superadmin' && route !== 'noiva') {
+      const separator = path.includes('?') ? '&' : '?';
+      path = `${path}${separator}casal=${encodeURIComponent(activeId)}`;
+    }
+    if (window.location.pathname + window.location.search !== path) {
       window.history.pushState({}, '', path);
     }
     setCurrentRoute(route);
@@ -204,6 +243,10 @@ export default function App() {
       localStorage.removeItem('cha_guest_session');
       localStorage.removeItem('cha_guest_name');
       localStorage.removeItem('cha_guest_unlocked');
+      localStorage.removeItem('cha_guest_rsvp_confirmed');
+      if (selectedCoupleId) {
+        localStorage.removeItem(`cha_guest_rsvp_confirmed_${selectedCoupleId}`);
+      }
       await logoutFirebase();
     } catch (err) {
       console.error(err);
@@ -269,7 +312,7 @@ export default function App() {
       // If a specific couple is requested via URL parameter or selection
       const urlParams = new URLSearchParams(window.location.search);
       const urlCoupleId = urlParams.get('casal') || urlParams.get('couple') || urlParams.get('c');
-      const targetCoupleId = urlCoupleId || selectedCoupleId;
+      const targetCoupleId = urlCoupleId || selectedCoupleId || (typeof window !== 'undefined' ? localStorage.getItem('cha_selected_couple_id') : null);
 
       if (targetCoupleId) {
         let found = couplesList.find(c => c.id === targetCoupleId);
@@ -291,6 +334,7 @@ export default function App() {
             guests: found.guests || []
           });
           setSelectedCoupleId(targetCoupleId);
+          localStorage.setItem('cha_selected_couple_id', targetCoupleId);
           setLoading(false);
           return;
         }
@@ -305,6 +349,7 @@ export default function App() {
           guests: first.guests || []
         });
         setSelectedCoupleId(first.id);
+        localStorage.setItem('cha_selected_couple_id', first.id);
         setLoading(false);
         return;
       }
@@ -349,6 +394,13 @@ export default function App() {
 
   // API Call Handlers with direct Firestore sync
   const handleClaimGift = async (giftId: string, claimData: { guestName: string; guestEmail?: string; guestPhone?: string; notes?: string }) => {
+    // Validação: não permitir escolher presente já escolhido por outro convidado
+    const existingGift = data.gifts.find(g => g.id === giftId);
+    if (existingGift?.isClaimed && existingGift.claimedByGuestName && existingGift.claimedByGuestName.trim().toLowerCase() !== claimData.guestName.trim().toLowerCase()) {
+      showToast('Este presente já foi reservado por outro convidado!');
+      return;
+    }
+
     const updatedGifts = data.gifts.map(g => {
       if (g.id === giftId) {
         return {
@@ -357,33 +409,40 @@ export default function App() {
           claimedByGuestName: claimData.guestName,
           claimedByGuestEmail: claimData.guestEmail,
           claimedByGuestPhone: claimData.guestPhone,
-          notes: claimData.notes
+          notes: claimData.notes,
+          claimedAt: new Date().toISOString()
         };
       }
       return g;
     });
 
-    const activeCoupleId = selectedCoupleId || auth.currentUser?.uid || data.eventInfo.id;
+    // 1. Atualização em tempo real instantânea na tela do convidado (0ms)
+    setData(prev => ({
+      ...prev,
+      gifts: updatedGifts
+    }));
+
+    showToast(`Presente reservado por ${claimData.guestName}! ❤️`);
+
+    // 2. Salva na lista do casal existente em nuvem (NUNCA cria um casal novo)
+    const activeCoupleId = selectedCoupleId || (data.eventInfo && data.eventInfo.id !== 'main' ? data.eventInfo.id : null);
     if (activeCoupleId) {
-      await saveCoupleToFirestore(activeCoupleId, data.eventInfo, updatedGifts, data.guests);
+      await updateCoupleGiftsInFirestore(activeCoupleId, updatedGifts);
     } else {
       const targetGift = updatedGifts.find(g => g.id === giftId);
       if (targetGift) await saveGiftToFirestore(targetGift);
     }
 
-    const res = await fetch(`/api/gifts/${giftId}/claim`, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify(claimData)
-    });
-
-    if (!res.ok) {
-      const errJson = await res.json();
-      throw new Error(errJson.error || 'Erro ao escolher presente');
+    // 3. Sincroniza em segundo plano sem descarregar a página nem resetar estado
+    try {
+      await fetch(`/api/gifts/${giftId}/claim`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(claimData)
+      });
+    } catch (err) {
+      console.warn('Server claim sync notice:', err);
     }
-
-    await fetchData();
-    showToast(`Presente reservado por ${claimData.guestName}! ❤️`);
   };
 
   const handleAddCustomGift = async (giftData: { name: string; category: GiftCategory; description?: string; priceRange?: string; isCustom?: boolean; claimedByGuestName?: string }) => {
@@ -397,56 +456,128 @@ export default function App() {
       claimedByGuestName: giftData.claimedByGuestName || '',
       isCustom: true
     };
-    await saveGiftToFirestore(newGift);
 
-    const res = await fetch('/api/gifts', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify(giftData)
-    });
+    const updatedGifts = [...data.gifts, newGift];
+    setData(prev => ({
+      ...prev,
+      gifts: updatedGifts
+    }));
 
-    if (!res.ok) {
-      const errJson = await res.json();
-      throw new Error(errJson.error || 'Erro ao sugerir presente');
+    const activeCoupleId = selectedCoupleId || (data.eventInfo && data.eventInfo.id !== 'main' ? data.eventInfo.id : null);
+    if (activeCoupleId) {
+      await updateCoupleGiftsInFirestore(activeCoupleId, updatedGifts);
+    } else {
+      await saveGiftToFirestore(newGift);
     }
 
-    await fetchData();
+    try {
+      await fetch('/api/gifts', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(giftData)
+      });
+    } catch (err) {
+      console.warn('Server custom gift sync notice:', err);
+    }
+
     showToast('Presente adicionado com sucesso!');
   };
 
   const handleSubmitRsvp = async (rsvpData: { name: string; email?: string; phone?: string; companions: number; status: 'confirmed' | 'declined'; message?: string }) => {
-    const newGuest: Guest = {
-      id: `guest_${Date.now()}_${Math.random().toString(36).substring(2, 6)}`,
-      name: rsvpData.name,
-      email: rsvpData.email || '',
-      phone: rsvpData.phone || '',
-      companions: rsvpData.companions || 0,
-      status: rsvpData.status,
-      message: rsvpData.message || '',
-      updatedAt: new Date().toISOString()
-    };
-    const updatedGuests = [...data.guests, newGuest];
+    const coupleKey = selectedCoupleId ? `cha_guest_rsvp_confirmed_${selectedCoupleId}` : null;
+    if (rsvpData.status === 'confirmed') {
+      localStorage.setItem('cha_guest_rsvp_confirmed', 'true');
+      if (coupleKey) localStorage.setItem(coupleKey, 'true');
+    } else {
+      localStorage.removeItem('cha_guest_rsvp_confirmed');
+      if (coupleKey) localStorage.removeItem(coupleKey);
+    }
 
-    const activeCoupleId = selectedCoupleId || auth.currentUser?.uid || data.eventInfo.id;
+    // Auto-sync guestSession if not set
+    if (!guestSession && rsvpData.name) {
+      const session: GuestAuthSession = {
+        name: rsvpData.name.trim(),
+        email: rsvpData.email?.trim() || '',
+        provider: 'email'
+      };
+      setGuestSession(session);
+      try {
+        localStorage.setItem('cha_guest_session', JSON.stringify(session));
+        localStorage.setItem('cha_guest_name', session.name);
+      } catch (err) {
+        console.error(err);
+      }
+    }
+
+    const cleanName = rsvpData.name.trim();
+    const cleanEmail = rsvpData.email?.trim() || '';
+    const cleanPhone = rsvpData.phone?.trim() || '';
+
+    // Check if guest already exists
+    const existingIndex = data.guests.findIndex(g => 
+      (cleanPhone && g.phone && g.phone.replace(/\D/g, '') === cleanPhone.replace(/\D/g, '')) ||
+      (cleanEmail && g.email && g.email.toLowerCase() === cleanEmail.toLowerCase()) ||
+      g.name.trim().toLowerCase() === cleanName.toLowerCase()
+    );
+
+    let updatedGuests: Guest[];
+    let targetGuest: Guest;
+
+    if (existingIndex >= 0) {
+      targetGuest = {
+        ...data.guests[existingIndex],
+        name: cleanName,
+        email: cleanEmail || data.guests[existingIndex].email,
+        phone: cleanPhone || data.guests[existingIndex].phone,
+        companions: Number(rsvpData.companions) || 0,
+        status: rsvpData.status,
+        message: rsvpData.message?.trim() || data.guests[existingIndex].message,
+        updatedAt: new Date().toISOString()
+      };
+      updatedGuests = [...data.guests];
+      updatedGuests[existingIndex] = targetGuest;
+    } else {
+      targetGuest = {
+        id: `guest_${Date.now()}_${Math.random().toString(36).substring(2, 6)}`,
+        name: cleanName,
+        email: cleanEmail,
+        phone: cleanPhone,
+        companions: Number(rsvpData.companions) || 0,
+        status: rsvpData.status,
+        message: rsvpData.message?.trim() || '',
+        updatedAt: new Date().toISOString()
+      };
+      updatedGuests = [...data.guests, targetGuest];
+    }
+
+    // Atualização otimista imediata na lista de convidados em tempo real
+    setData(prev => ({
+      ...prev,
+      guests: updatedGuests
+    }));
+
+    const activeCoupleId = selectedCoupleId || (data.eventInfo && data.eventInfo.id !== 'main' ? data.eventInfo.id : null);
     if (activeCoupleId) {
       await saveCoupleToFirestore(activeCoupleId, data.eventInfo, data.gifts, updatedGuests);
     } else {
-      await saveGuestToFirestore(newGuest);
+      await saveGuestToFirestore(targetGuest);
     }
 
-    const res = await fetch('/api/rsvp', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify(rsvpData)
-    });
-
-    if (!res.ok) {
-      const errJson = await res.json();
-      throw new Error(errJson.error || 'Erro ao enviar confirmação');
+    try {
+      await fetch('/api/rsvp', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(rsvpData)
+      });
+    } catch (err) {
+      console.warn('Server rsvp sync notice:', err);
     }
 
-    await fetchData();
-    showToast('Confirmação de presença registrada com sucesso!');
+    if (rsvpData.status === 'confirmed') {
+      showToast('🎉 Presença confirmada! A lista de presentes foi liberada!');
+    } else {
+      showToast('Resposta registrada. Sentiremos sua falta!');
+    }
   };
 
   const handleUpdateEventInfo = async (info: Partial<EventInfo>) => {
@@ -632,20 +763,36 @@ export default function App() {
           claimedByGuestName: undefined,
           claimedByGuestEmail: undefined,
           claimedByGuestPhone: undefined,
-          notes: undefined
+          notes: undefined,
+          claimedAt: undefined
         };
       }
       return g;
     });
-    const activeCoupleId = auth.currentUser?.uid || selectedCoupleId || data.eventInfo.id;
+
+    // 1. Atualização em tempo real instantânea na tela do convidado (0ms)
+    setData(prev => ({
+      ...prev,
+      gifts: updatedGifts
+    }));
+
+    showToast('Presente liberado para a lista novamente!');
+
+    // 2. Atualiza os presentes do casal existente no Firestore (NUNCA cria um casal novo)
+    const activeCoupleId = selectedCoupleId || (data.eventInfo && data.eventInfo.id !== 'main' ? data.eventInfo.id : null);
     if (activeCoupleId) {
-      await saveCoupleToFirestore(activeCoupleId, data.eventInfo, updatedGifts, data.guests);
+      await updateCoupleGiftsInFirestore(activeCoupleId, updatedGifts);
+    } else {
+      const targetGift = updatedGifts.find(g => g.id === id);
+      if (targetGift) await saveGiftToFirestore(targetGift);
     }
 
-    const res = await fetch(`/api/gifts/${id}/unclaim`, { method: 'POST' });
-    if (!res.ok) throw new Error('Erro ao liberar presente');
-    await fetchData();
-    showToast('Presente liberado para a lista novamente!');
+    // 3. Sincroniza em segundo plano sem descarregar a página nem resetar estado
+    try {
+      await fetch(`/api/gifts/${id}/unclaim`, { method: 'POST' });
+    } catch (err) {
+      console.warn('Server unclaim sync notice:', err);
+    }
   };
 
   const handleResetData = async () => {
@@ -654,6 +801,55 @@ export default function App() {
     await fetchData();
     showToast('Dados restaurados!');
   };
+
+  const isSuperAdmin = Boolean(
+    guestSession?.email?.toLowerCase() === 'euques@gmail.com' &&
+    typeof window !== 'undefined' &&
+    sessionStorage.getItem('cha_superadmin_authenticated') === 'true'
+  );
+
+  const isCoupleAdmin = Boolean(
+    typeof window !== 'undefined' &&
+    (sessionStorage.getItem('cha_couple_authenticated') === 'true' ||
+      (auth.currentUser && selectedCoupleId && auth.currentUser.uid === selectedCoupleId))
+  );
+
+  const isPresenceConfirmed = React.useMemo(() => {
+    if (isSuperAdmin || isCoupleAdmin) return true;
+    if (!guestSession) return false;
+
+    const coupleKey = selectedCoupleId ? `cha_guest_rsvp_confirmed_${selectedCoupleId}` : null;
+    if (coupleKey && localStorage.getItem(coupleKey) === 'true') {
+      return true;
+    }
+
+    const sessionName = (guestSession.name || '').trim().toLowerCase();
+    const sessionEmail = (guestSession.email || '').trim().toLowerCase();
+
+    const foundInGuests = data.guests.find(g => {
+      const matchName = g.name && g.name.trim().toLowerCase() === sessionName;
+      const matchEmail = sessionEmail && g.email && g.email.trim().toLowerCase() === sessionEmail;
+      return matchName || matchEmail;
+    });
+
+    if (foundInGuests) {
+      return foundInGuests.status === 'confirmed';
+    }
+
+    // Se o convidado já possui algum presente reservado no evento, sua presença está confirmada
+    const hasClaimedGift = Boolean(
+      sessionName && data.gifts.some(g => g.isClaimed && g.claimedByGuestName?.trim().toLowerCase() === sessionName)
+    );
+    if (hasClaimedGift) {
+      return true;
+    }
+
+    if (localStorage.getItem('cha_guest_rsvp_confirmed') === 'true') {
+      return true;
+    }
+
+    return false;
+  }, [guestSession, data.guests, data.gifts, selectedCoupleId, isSuperAdmin, isCoupleAdmin]);
 
   const availableGiftsCount = data.gifts.filter(g => !g.isClaimed).length;
 
@@ -687,6 +883,7 @@ export default function App() {
         onCopyLink={handleCopyLink}
         copiedLink={copiedLink}
         availableGiftsCount={availableGiftsCount}
+        isPresenceConfirmed={isPresenceConfirmed}
       />
 
       {/* Main Content Area based on URL Route */}
@@ -697,6 +894,7 @@ export default function App() {
             onNavigate={navigate}
             onSelectCouple={(id) => {
               setSelectedCoupleId(id);
+              localStorage.setItem('cha_selected_couple_id', id);
               const found = registeredCouples.find(c => c.id === id);
               if (found) {
                 setData({
@@ -715,6 +913,7 @@ export default function App() {
               onNavigate={navigate}
               onSelectCoupleForAdmin={(id) => {
                 setSelectedCoupleId(id);
+                localStorage.setItem('cha_selected_couple_id', id);
                 const found = registeredCouples.find(c => c.id === id);
                 if (found) {
                   setData({
@@ -731,6 +930,7 @@ export default function App() {
               onNavigate={navigate}
               onSelectCouple={(id) => {
                 setSelectedCoupleId(id);
+                localStorage.setItem('cha_selected_couple_id', id);
                 const found = registeredCouples.find(c => c.id === id);
                 if (found) {
                   setData({
@@ -752,6 +952,7 @@ export default function App() {
             onSubmitRsvp={handleSubmitRsvp}
             onNavigate={navigate}
             availableGiftsCount={availableGiftsCount}
+            isPresenceConfirmed={isPresenceConfirmed}
           />
         )}
 
@@ -759,6 +960,10 @@ export default function App() {
           <GiftsPage 
             gifts={data.gifts}
             guestSession={guestSession}
+            isPresenceConfirmed={isPresenceConfirmed}
+            isCoupleAdmin={isCoupleAdmin}
+            isSuperAdmin={isSuperAdmin}
+            eventInfo={data.eventInfo}
             onClaimGift={handleClaimGift}
             onUnclaimGift={handleUnclaimGift}
             onAddCustomGift={handleAddCustomGift}

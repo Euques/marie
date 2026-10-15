@@ -13,6 +13,7 @@ interface HomePageProps {
   onSubmitRsvp: (data: { name: string; email?: string; phone?: string; companions: number; status: 'confirmed' | 'declined'; message?: string }) => Promise<void>;
   onNavigate: (route: 'home' | 'presentes' | 'login' | 'noiva') => void;
   availableGiftsCount: number;
+  isPresenceConfirmed: boolean;
 }
 
 export const HomePage: React.FC<HomePageProps> = ({
@@ -21,7 +22,8 @@ export const HomePage: React.FC<HomePageProps> = ({
   guestSession,
   onSubmitRsvp,
   onNavigate,
-  availableGiftsCount
+  availableGiftsCount,
+  isPresenceConfirmed
 }) => {
   // RSVP Form State
   const [rsvpName, setRsvpName] = useState(guestSession?.name || '');
@@ -31,7 +33,7 @@ export const HomePage: React.FC<HomePageProps> = ({
   const [rsvpStatus, setRsvpStatus] = useState<'confirmed' | 'declined'>('confirmed');
   const [rsvpMessage, setRsvpMessage] = useState('');
   const [rsvpLoading, setRsvpLoading] = useState(false);
-  const [rsvpSubmitted, setRsvpSubmitted] = useState(false);
+  const [rsvpSubmitted, setRsvpSubmitted] = useState(isPresenceConfirmed);
   const [rsvpError, setRsvpError] = useState('');
 
   // Accordion States (Closed by default)
@@ -43,13 +45,35 @@ export const HomePage: React.FC<HomePageProps> = ({
   const [copiedPix, setCopiedPix] = useState(false);
   const [copiedAddress, setCopiedAddress] = useState(false);
 
-  // Keep RSVP name/email updated with session
+  // Keep RSVP name/email updated with session and guest history
+  React.useEffect(() => {
+    if (isPresenceConfirmed) {
+      setRsvpSubmitted(true);
+    }
+  }, [isPresenceConfirmed]);
+
   React.useEffect(() => {
     if (guestSession) {
       if (guestSession.name) setRsvpName(guestSession.name);
       if (guestSession.email) setRsvpEmail(guestSession.email);
+
+      const found = guests.find(g => 
+        (g.name && g.name.toLowerCase() === guestSession.name.toLowerCase()) ||
+        (guestSession.email && g.email && g.email.toLowerCase() === guestSession.email.toLowerCase())
+      );
+      if (found) {
+        if (found.status === 'confirmed' || found.status === 'declined') {
+          setRsvpStatus(found.status);
+          if (found.status === 'confirmed') {
+            setRsvpSubmitted(true);
+          }
+        }
+        if (found.phone) setRsvpPhone(found.phone);
+        if (found.companions !== undefined) setRsvpCompanions(found.companions);
+        if (found.message) setRsvpMessage(found.message);
+      }
     }
-  }, [guestSession]);
+  }, [guestSession, guests]);
 
   // Default couple photo fallback
   const couplePhoto = eventInfo.coverImage || 'https://images.unsplash.com/photo-1522673607200-164d1b6ce486?auto=format&fit=crop&w=1200&q=80';
@@ -179,36 +203,71 @@ export const HomePage: React.FC<HomePageProps> = ({
 
       </div>
 
-      {/* 2. CARD DE LISTA DE PRESENTES (APENAS PARA USUÁRIOS LOGADOS) */}
+      {/* 2. CARD DE LISTA DE PRESENTES (LIBERADO APENAS SE CONFIRMOU PRESENÇA) */}
       {guestSession && (
-        <div className="bg-gradient-to-r from-[#2D2D2D] via-[#1E1E1E] to-[#2D2D2D] text-white p-6 sm:p-8 rounded-[2rem] shadow-xl border border-[#C5A059]/40 flex flex-col sm:flex-row items-center justify-between gap-6 transition-all hover:border-[#C5A059]">
-          <div className="flex items-center space-x-4">
-            <div className="w-14 h-14 rounded-2xl bg-[#C5A059] text-white flex items-center justify-center shrink-0 shadow-md">
-              <GiftIcon className="w-7 h-7" />
+        isPresenceConfirmed ? (
+          <div className="bg-gradient-to-r from-[#2D2D2D] via-[#1E1E1E] to-[#2D2D2D] text-white p-6 sm:p-8 rounded-[2rem] shadow-xl border border-[#C5A059]/40 flex flex-col sm:flex-row items-center justify-between gap-6 transition-all hover:border-[#C5A059]">
+            <div className="flex items-center space-x-4">
+              <div className="w-14 h-14 rounded-2xl bg-[#C5A059] text-white flex items-center justify-center shrink-0 shadow-md">
+                <GiftIcon className="w-7 h-7" />
+              </div>
+              <div>
+                <span className="text-[10px] uppercase tracking-[0.2em] font-bold text-[#C5A059] bg-[#C5A059]/20 px-2.5 py-0.5 rounded-full border border-[#C5A059]/30 mb-1 inline-flex items-center space-x-1">
+                  <CheckCircle2 className="w-3 h-3 text-[#C5A059]" />
+                  <span>Presença Confirmada • Lista Liberada</span>
+                </span>
+                <h3 className="font-bold text-xl sm:text-2xl text-white leading-tight">
+                  Presentear os Noivos
+                </h3>
+                <p className="text-xs text-stone-300 mt-0.5">
+                  {availableGiftsCount > 0 
+                    ? `${availableGiftsCount} ${availableGiftsCount === 1 ? 'presente disponível' : 'presentes disponíveis'} na lista`
+                    : 'Confira a lista completa de presentes do casal'}
+                </p>
+              </div>
             </div>
-            <div>
-              <span className="text-[10px] uppercase tracking-[0.2em] font-bold text-[#C5A059] bg-[#C5A059]/20 px-2.5 py-0.5 rounded-full border border-[#C5A059]/30 mb-1 inline-block">
-                Lista de Presentes
-              </span>
-              <h3 className="font-bold text-xl sm:text-2xl text-white leading-tight">
-                Presentear os Noivos
-              </h3>
-              <p className="text-xs text-stone-300 mt-0.5">
-                {availableGiftsCount > 0 
-                  ? `${availableGiftsCount} ${availableGiftsCount === 1 ? 'presente disponível' : 'presentes disponíveis'} na lista`
-                  : 'Confira a lista completa de presentes do casal'}
-              </p>
-            </div>
-          </div>
 
-          <button
-            onClick={() => onNavigate('presentes')}
-            className="w-full sm:w-auto px-6 py-3.5 bg-[#C5A059] hover:bg-[#B38F48] text-white text-xs font-bold uppercase tracking-wider rounded-xl transition flex items-center justify-center space-x-2 shrink-0 shadow-md active:scale-95 cursor-pointer"
-          >
-            <span>Ver Lista de Presentes</span>
-            <ArrowRight className="w-4 h-4" />
-          </button>
-        </div>
+            <button
+              onClick={() => onNavigate('presentes')}
+              className="w-full sm:w-auto px-6 py-3.5 bg-[#C5A059] hover:bg-[#B38F48] text-white text-xs font-bold uppercase tracking-wider rounded-xl transition flex items-center justify-center space-x-2 shrink-0 shadow-md active:scale-95 cursor-pointer"
+            >
+              <span>Ver Lista de Presentes</span>
+              <ArrowRight className="w-4 h-4" />
+            </button>
+          </div>
+        ) : (
+          <div className="bg-white p-6 sm:p-8 rounded-[2rem] shadow-md border-2 border-dashed border-[#C5A059]/40 flex flex-col sm:flex-row items-center justify-between gap-6 transition-all">
+            <div className="flex items-center space-x-4">
+              <div className="w-14 h-14 rounded-2xl bg-[#FAF9F6] text-[#C5A059] border border-[#E5DFD5] flex items-center justify-center shrink-0 shadow-2xs">
+                <Lock className="w-7 h-7 text-[#C5A059]" />
+              </div>
+              <div>
+                <span className="text-[10px] uppercase tracking-[0.2em] font-bold text-amber-800 bg-amber-100 px-2.5 py-0.5 rounded-full border border-amber-200 mb-1 inline-flex items-center space-x-1">
+                  <Lock className="w-3 h-3 text-amber-700" />
+                  <span>Exclusivo para Convidados Confirmados</span>
+                </span>
+                <h3 className="font-bold text-xl text-[#2D2D2D] leading-tight">
+                  Lista de Presentes Bloqueada
+                </h3>
+                <p className="text-xs text-[#2D2D2D]/70 mt-1 max-w-md">
+                  A lista de presentes dos noivos é liberada somente após você <strong>confirmar sua presença</strong>. Confirme no formulário abaixo para liberar o acesso imediato!
+                </p>
+              </div>
+            </div>
+
+            <button
+              type="button"
+              onClick={() => {
+                const el = document.getElementById('confirmar-presenca');
+                if (el) el.scrollIntoView({ behavior: 'smooth' });
+              }}
+              className="w-full sm:w-auto px-6 py-3.5 bg-[#2D2D2D] hover:bg-black text-white text-xs font-bold uppercase tracking-wider rounded-xl transition flex items-center justify-center space-x-2 shrink-0 shadow-md active:scale-95 cursor-pointer"
+            >
+              <span>Confirmar Presença para Liberar</span>
+              <ArrowRight className="w-4 h-4 text-[#C5A059]" />
+            </button>
+          </div>
+        )
       )}
 
       {/* 3. CARD DE CONVITE (FORA DO ACCORDION) OU FORMULÁRIO RSVP (SE LOGADO) */}
@@ -227,7 +286,7 @@ export const HomePage: React.FC<HomePageProps> = ({
               Você foi <span className="text-[#C5A059]">Convidado(a)!</span>
             </h2>
             <p className="text-sm text-[#2D2D2D]/75 leading-relaxed font-medium">
-              Identifique-se para confirmar sua presença, acessar a lista exclusiva de presentes do casal e enviar um recado carinhoso aos noivos.
+              Identifique-se para confirmar sua presença, liberar a lista de presentes do casal e enviar um recado carinhoso aos noivos.
             </p>
           </div>
 
@@ -261,26 +320,74 @@ export const HomePage: React.FC<HomePageProps> = ({
 
           <div className="space-y-6">
             {rsvpSubmitted ? (
-              <div className="bg-emerald-50 border border-emerald-200 rounded-2xl p-6 text-center space-y-4">
-                <CheckCircle2 className="w-12 h-12 text-emerald-600 mx-auto" />
-                <div className="space-y-1">
-                  <h4 className="text-xl font-bold text-emerald-900">
-                    Presença Confirmada com Sucesso! 🎉
-                  </h4>
-                  <p className="text-xs text-emerald-800">
-                    Obrigado, {guestSession.name}! Seus dados foram salvos com carinho pelos noivos.
-                  </p>
-                </div>
+              rsvpStatus === 'confirmed' || isPresenceConfirmed ? (
+                <div className="bg-emerald-50 border border-emerald-200 rounded-2xl p-6 sm:p-8 text-center space-y-4">
+                  <div className="w-14 h-14 rounded-full bg-emerald-100 text-emerald-600 flex items-center justify-center mx-auto shadow-xs border border-emerald-200">
+                    <CheckCircle2 className="w-8 h-8" />
+                  </div>
+                  <div className="space-y-1">
+                    <span className="text-[10px] font-bold uppercase tracking-widest text-emerald-700 bg-emerald-100 px-3 py-1 rounded-full border border-emerald-200">
+                      Status: Presença Confirmada
+                    </span>
+                    <h4 className="text-xl sm:text-2xl font-bold text-emerald-900 pt-1">
+                      Presença Confirmada com Sucesso! 🎉
+                    </h4>
+                    <p className="text-xs sm:text-sm text-emerald-800 max-w-md mx-auto">
+                      Obrigado, <strong>{rsvpName || guestSession.name}</strong>! Seus dados foram salvos pelos noivos e a <strong>lista de presentes já está liberada</strong> para você!
+                    </p>
+                  </div>
 
-                <div className="pt-2">
-                  <button
-                    onClick={() => setRsvpSubmitted(false)}
-                    className="text-xs font-bold uppercase tracking-wider text-[#2D2D2D]/60 underline hover:text-[#2D2D2D] cursor-pointer"
-                  >
-                    Editar dados da confirmação
-                  </button>
+                  <div className="pt-3 flex flex-col sm:flex-row items-center justify-center gap-3">
+                    <button
+                      onClick={() => onNavigate('presentes')}
+                      className="w-full sm:w-auto px-8 py-3.5 bg-[#C5A059] hover:bg-[#B38F48] text-white text-xs font-bold uppercase tracking-wider rounded-xl shadow-md transition flex items-center justify-center space-x-2 active:scale-95 cursor-pointer"
+                    >
+                      <GiftIcon className="w-4 h-4" />
+                      <span>Acessar Lista de Presentes Agora</span>
+                      <ArrowRight className="w-4 h-4" />
+                    </button>
+
+                    <button
+                      onClick={() => setRsvpSubmitted(false)}
+                      className="w-full sm:w-auto px-5 py-3 text-xs font-bold text-[#2D2D2D]/70 hover:text-[#2D2D2D] hover:bg-white rounded-xl transition cursor-pointer"
+                    >
+                      Editar Confirmação
+                    </button>
+                  </div>
                 </div>
-              </div>
+              ) : (
+                <div className="bg-stone-50 border border-stone-200 rounded-2xl p-6 sm:p-8 text-center space-y-4">
+                  <div className="w-14 h-14 rounded-full bg-stone-100 text-stone-600 flex items-center justify-center mx-auto shadow-xs border border-stone-200">
+                    <Heart className="w-8 h-8 text-[#C5A059]" />
+                  </div>
+                  <div className="space-y-1">
+                    <span className="text-[10px] font-bold uppercase tracking-widest text-stone-600 bg-stone-100 px-3 py-1 rounded-full border border-stone-200">
+                      Resposta Registrada
+                    </span>
+                    <h4 className="text-xl sm:text-2xl font-bold text-stone-800 pt-1">
+                      Sentiremos sua falta! 💌
+                    </h4>
+                    <p className="text-xs text-stone-600 max-w-md mx-auto">
+                      Registramos que você não poderá comparecer. Agradecemos pelo aviso e pelo carinho com os noivos.
+                    </p>
+                    <p className="text-[11px] text-stone-500 pt-1">
+                      (A lista de presentes fica visível apenas para convidados que confirmarem presença)
+                    </p>
+                  </div>
+
+                  <div className="pt-2">
+                    <button
+                      onClick={() => {
+                        setRsvpStatus('confirmed');
+                        setRsvpSubmitted(false);
+                      }}
+                      className="text-xs font-bold text-[#C5A059] hover:underline cursor-pointer"
+                    >
+                      Mudou de ideia? Clique aqui para confirmar sua presença
+                    </button>
+                  </div>
+                </div>
+              )
             ) : (
               <form onSubmit={handleRsvpSubmit} className="space-y-4">
                 {rsvpError && (

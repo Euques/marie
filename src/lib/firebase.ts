@@ -400,6 +400,37 @@ export async function getCoupleFromFirestore(uid: string) {
   }
 }
 
+export async function updateCoupleGiftsInFirestore(coupleId: string, gifts: Gift[]): Promise<void> {
+  if (!coupleId || coupleId === 'undefined' || coupleId === 'null') return;
+  try {
+    await ensureAuth();
+    const coupleRef = doc(db, 'couples', coupleId);
+    await setDoc(coupleRef, {
+      gifts: cleanForFirestore(gifts),
+      updatedAt: new Date().toISOString()
+    }, { merge: true });
+  } catch (e) {
+    handleFirestoreError(e, OperationType.WRITE, `couples/${coupleId}`);
+  }
+}
+
+export function subscribeToCoupleRealtime(coupleId: string, callback: (coupleData: any) => void) {
+  if (!coupleId || coupleId === 'undefined' || coupleId === 'null') return () => {};
+  try {
+    const coupleRef = doc(db, 'couples', coupleId);
+    return onSnapshot(coupleRef, (docSnap) => {
+      if (docSnap.exists()) {
+        callback({ id: docSnap.id, ...docSnap.data() });
+      }
+    }, (error) => {
+      console.warn(`Realtime snapshot notice for couple ${coupleId}:`, error);
+    });
+  } catch (err) {
+    console.warn('Realtime subscription error:', err);
+    return () => {};
+  }
+}
+
 export async function getAllCouplesFromFirestore(): Promise<any[]> {
   try {
     await ensureAuth();
@@ -412,9 +443,19 @@ export async function getAllCouplesFromFirestore(): Promise<any[]> {
 
     if (rawCouples.length === 0) return [];
 
+    // Filter out invalid/ghost couple documents that have no bride or groom name or title
+    const validCouples = rawCouples.filter(c => {
+      const bride = (c.eventInfo?.brideName || '').trim();
+      const groom = (c.eventInfo?.groomName || '').trim();
+      const title = (c.eventInfo?.eventTitle || '').trim();
+      // Exclude placeholder documents with empty bride and groom
+      const hasIdentifiableNames = bride.length > 0 || groom.length > 0 || title.length > 3;
+      return hasIdentifiableNames;
+    });
+
     // Filter out 'default' document if non-default couple profiles exist
-    const nonDefault = rawCouples.filter(c => c.id !== 'default');
-    const sourceList = nonDefault.length > 0 ? nonDefault : rawCouples;
+    const nonDefault = validCouples.filter(c => c.id !== 'default');
+    const sourceList = nonDefault.length > 0 ? nonDefault : validCouples;
 
     // Deduplicate by Bride & Groom Name or ID
     const uniqueMap = new Map<string, any>();
