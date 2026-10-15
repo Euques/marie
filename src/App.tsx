@@ -445,13 +445,14 @@ export default function App() {
     }
   };
 
-  const handleAddCustomGift = async (giftData: { name: string; category: GiftCategory; description?: string; priceRange?: string; isCustom?: boolean; claimedByGuestName?: string }) => {
+  const handleAddCustomGift = async (giftData: { name: string; category: GiftCategory; description?: string; priceRange?: string; imageUrl?: string; isCustom?: boolean; claimedByGuestName?: string }) => {
     const newGift: Gift = {
       id: `gift_${Date.now()}_${Math.random().toString(36).substring(2, 6)}`,
       name: giftData.name,
       category: giftData.category,
       description: giftData.description || '',
       priceRange: giftData.priceRange || 'Até R$ 100',
+      imageUrl: giftData.imageUrl || '',
       isClaimed: !!giftData.claimedByGuestName,
       claimedByGuestName: giftData.claimedByGuestName || '',
       isCustom: true
@@ -574,6 +575,15 @@ export default function App() {
     }
 
     if (rsvpData.status === 'confirmed') {
+      localStorage.setItem('cha_guest_rsvp_confirmed', 'true');
+      const session = {
+        name: cleanName,
+        email: cleanEmail,
+        phone: cleanPhone,
+        authenticatedAt: new Date().toISOString()
+      };
+      setGuestSession(session);
+      localStorage.setItem('cha_guest_session', JSON.stringify(session));
       showToast('🎉 Presença confirmada! A lista de presentes foi liberada!');
     } else {
       showToast('Resposta registrada. Sentiremos sua falta!');
@@ -703,6 +713,8 @@ export default function App() {
       category: giftData.category,
       description: giftData.description || '',
       priceRange: giftData.priceRange || 'Até R$ 100',
+      suggestedUrl: giftData.suggestedUrl || '',
+      imageUrl: giftData.imageUrl || '',
       isClaimed: !!giftData.isClaimed,
       claimedByGuestName: giftData.claimedByGuestName || '',
       isCustom: !!giftData.isCustom
@@ -717,40 +729,59 @@ export default function App() {
       updatedGifts = [...data.gifts, giftObj];
     }
 
-    const activeCoupleId = auth.currentUser?.uid || selectedCoupleId || data.eventInfo.id;
+    // 1. Atualização instantânea em tempo real na interface (0ms)
+    setData(prev => ({
+      ...prev,
+      gifts: updatedGifts
+    }));
+
+    // 2. Persiste em nuvem no Firestore
+    const activeCoupleId = auth.currentUser?.uid || selectedCoupleId || (data.eventInfo && data.eventInfo.id !== 'main' ? data.eventInfo.id : null);
     if (activeCoupleId) {
       await saveCoupleToFirestore(activeCoupleId, data.eventInfo, updatedGifts, data.guests);
     } else {
       await saveGiftToFirestore(giftObj);
     }
 
+    // 3. Sincroniza com servidor em segundo plano
     const method = giftData.id ? 'PUT' : 'POST';
     const url = giftData.id ? `/api/gifts/${giftData.id}` : '/api/gifts';
 
-    const res = await fetch(url, {
-      method,
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify(giftData)
-    });
+    try {
+      await fetch(url, {
+        method,
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(giftObj)
+      });
+    } catch (err) {
+      console.warn('Server gift sync notice:', err);
+    }
 
-    if (!res.ok) throw new Error('Erro ao salvar presente');
-    await fetchData();
-    showToast('Presente salvo!');
+    showToast('Presente salvo com sucesso!');
   };
 
   const handleDeleteGift = async (id: string) => {
     if (!confirm('Tem certeza que deseja remover este presente da lista?')) return;
     const updatedGifts = data.gifts.filter(g => g.id !== id);
-    const activeCoupleId = auth.currentUser?.uid || selectedCoupleId || data.eventInfo.id;
+    
+    // Atualização imediata em tempo real na tela
+    setData(prev => ({
+      ...prev,
+      gifts: updatedGifts
+    }));
+
+    const activeCoupleId = auth.currentUser?.uid || selectedCoupleId || (data.eventInfo && data.eventInfo.id !== 'main' ? data.eventInfo.id : null);
     if (activeCoupleId) {
       await saveCoupleToFirestore(activeCoupleId, data.eventInfo, updatedGifts, data.guests);
     } else {
       await deleteGiftFromFirestore(id);
     }
 
-    const res = await fetch(`/api/gifts/${id}`, { method: 'DELETE' });
-    if (!res.ok) throw new Error('Erro ao excluir presente');
-    await fetchData();
+    try {
+      await fetch(`/api/gifts/${id}`, { method: 'DELETE' });
+    } catch (err) {
+      console.warn('Server delete gift sync notice:', err);
+    }
     showToast('Presente excluído!');
   };
 
@@ -964,6 +995,8 @@ export default function App() {
             isCoupleAdmin={isCoupleAdmin}
             isSuperAdmin={isSuperAdmin}
             eventInfo={data.eventInfo}
+            guests={data.guests}
+            onSubmitRsvp={handleSubmitRsvp}
             onClaimGift={handleClaimGift}
             onUnclaimGift={handleUnclaimGift}
             onAddCustomGift={handleAddCustomGift}

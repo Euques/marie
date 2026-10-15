@@ -1,6 +1,6 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { Gift, GiftCategory } from '../types';
-import { Gift as GiftIcon, X, Check, Link as LinkIcon, DollarSign, Tag, Info, Upload, Image as ImageIcon, Trash2 } from 'lucide-react';
+import { Gift as GiftIcon, X, Check, Link as LinkIcon, DollarSign, Tag, Info, Upload, Image as ImageIcon, Trash2, Loader2 } from 'lucide-react';
 
 interface GiftModalProps {
   isOpen: boolean;
@@ -28,6 +28,7 @@ export const GiftModal: React.FC<GiftModalProps> = ({ isOpen, gift, onClose, onS
   const [isClaimed, setIsClaimed] = useState(false);
   const [claimedByGuestName, setClaimedByGuestName] = useState('');
   const [loading, setLoading] = useState(false);
+  const [uploadingImage, setUploadingImage] = useState(false);
   const [error, setError] = useState('');
   const fileInputRef = useRef<HTMLInputElement>(null);
 
@@ -51,6 +52,7 @@ export const GiftModal: React.FC<GiftModalProps> = ({ isOpen, gift, onClose, onS
       setIsClaimed(false);
       setClaimedByGuestName('');
     }
+    setError('');
   }, [gift, isOpen]);
 
   if (!isOpen) return null;
@@ -60,42 +62,82 @@ export const GiftModal: React.FC<GiftModalProps> = ({ isOpen, gift, onClose, onS
     if (!file) return;
 
     if (!file.type.startsWith('image/')) {
-      setError('Por favor, selecione um arquivo de imagem válido (JPG, PNG).');
+      setError('Por favor, selecione um arquivo de imagem válido (JPG, PNG, WebP).');
       return;
     }
+
+    setUploadingImage(true);
+    setError('');
 
     const reader = new FileReader();
     reader.onload = (event) => {
       const img = new Image();
-      img.onload = () => {
-        const canvas = document.createElement('canvas');
-        let width = img.width;
-        let height = img.height;
-        const MAX_SIZE = 800;
+      img.onload = async () => {
+        try {
+          const canvas = document.createElement('canvas');
+          let width = img.width;
+          let height = img.height;
+          const MAX_SIZE = 700;
 
-        if (width > height) {
-          if (width > MAX_SIZE) {
-            height *= MAX_SIZE / width;
-            width = MAX_SIZE;
+          if (width > height) {
+            if (width > MAX_SIZE) {
+              height = Math.round(height * (MAX_SIZE / width));
+              width = MAX_SIZE;
+            }
+          } else {
+            if (height > MAX_SIZE) {
+              width = Math.round(width * (MAX_SIZE / height));
+              height = MAX_SIZE;
+            }
           }
-        } else {
-          if (height > MAX_SIZE) {
-            width *= MAX_SIZE / height;
-            height = MAX_SIZE;
-          }
-        }
 
-        canvas.width = width;
-        canvas.height = height;
-        const ctx = canvas.getContext('2d');
-        if (ctx) {
-          ctx.drawImage(img, 0, 0, width, height);
-          setImageUrl(canvas.toDataURL('image/jpeg', 0.82));
-        } else {
-          setImageUrl(event.target?.result as string);
+          canvas.width = width;
+          canvas.height = height;
+          const ctx = canvas.getContext('2d');
+          let base64Data = '';
+          if (ctx) {
+            ctx.drawImage(img, 0, 0, width, height);
+            base64Data = canvas.toDataURL('image/jpeg', 0.80);
+          } else {
+            base64Data = event.target?.result as string;
+          }
+
+          // Try uploading to server endpoint /api/upload to avoid large payload in Firestore
+          try {
+            const res = await fetch('/api/upload', {
+              method: 'POST',
+              headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify({ image: base64Data, fileName: file.name })
+            });
+            if (res.ok) {
+              const resData = await res.json();
+              if (resData.url) {
+                setImageUrl(resData.url);
+                setUploadingImage(false);
+                return;
+              }
+            }
+          } catch (uploadErr) {
+            console.warn('Server upload fallback to direct data url:', uploadErr);
+          }
+
+          // Fallback to compressed base64
+          setImageUrl(base64Data);
+        } catch (err: any) {
+          setError('Erro ao processar imagem. Tente outra foto.');
+        } finally {
+          setUploadingImage(false);
         }
       };
+      img.onerror = () => {
+        setError('Não foi possível carregar a imagem selecionada.');
+        setUploadingImage(false);
+      };
       img.src = event.target?.result as string;
+    };
+    reader.onerror = () => {
+      setError('Erro ao ler arquivo.');
+      setUploadingImage(false);
     };
     reader.readAsDataURL(file);
   };
@@ -254,15 +296,25 @@ export const GiftModal: React.FC<GiftModalProps> = ({ isOpen, gift, onClose, onS
               <div className="flex-1 space-y-1.5">
                 <button
                   type="button"
+                  disabled={uploadingImage}
                   onClick={() => fileInputRef.current?.click()}
-                  className="px-3 py-1.5 bg-white hover:bg-[#F2ECE4] text-[#2D2D2D] border border-[#E5DFD5] rounded-xl text-xs font-bold uppercase tracking-wider flex items-center space-x-1.5 shadow-2xs transition active:scale-95 cursor-pointer"
+                  className="px-3 py-1.5 bg-white hover:bg-[#F2ECE4] text-[#2D2D2D] border border-[#E5DFD5] rounded-xl text-xs font-bold uppercase tracking-wider flex items-center space-x-1.5 shadow-2xs transition active:scale-95 cursor-pointer disabled:opacity-50"
                 >
-                  <Upload className="w-3.5 h-3.5 text-[#C5A059]" />
-                  <span>{imageUrl ? 'Trocar Imagem' : 'Enviar Foto do Aparelho'}</span>
+                  {uploadingImage ? (
+                    <>
+                      <Loader2 className="w-3.5 h-3.5 text-[#C5A059] animate-spin" />
+                      <span>Processando Foto...</span>
+                    </>
+                  ) : (
+                    <>
+                      <Upload className="w-3.5 h-3.5 text-[#C5A059]" />
+                      <span>{imageUrl ? 'Trocar Foto' : 'Enviar Foto do Presente'}</span>
+                    </>
+                  )}
                 </button>
                 <input 
                   type="url"
-                  placeholder="Ou cole a URL da imagem..."
+                  placeholder="Ou cole o link da foto (URL)..."
                   value={imageUrl}
                   onChange={e => setImageUrl(e.target.value)}
                   className="w-full px-3 py-1.5 text-xs border border-[#E5DFD5] bg-white rounded-xl focus:border-[#C5A059] outline-none font-sans"

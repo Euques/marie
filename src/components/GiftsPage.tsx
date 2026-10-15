@@ -1,11 +1,11 @@
 import React, { useState, useMemo } from 'react';
-import { Gift, GiftCategory, GuestAuthSession } from '../types';
+import { Gift, GiftCategory, GuestAuthSession, Guest, RsvpStatus } from '../types';
 import { CustomGiftModal } from './CustomGiftModal';
 import { 
   Gift as GiftIcon, Search, Sparkles, Lock, 
   ChevronDown, ChevronUp, Plus, Heart, User, CheckCircle2,
   RotateCcw, ExternalLink, ShoppingBag, ArrowLeft, ArrowRight,
-  PackageCheck, ListPlus, Filter
+  PackageCheck, ListPlus, Users, MessageSquare, Send, Calendar
 } from 'lucide-react';
 
 interface GiftsPageProps {
@@ -15,9 +15,11 @@ interface GiftsPageProps {
   isCoupleAdmin?: boolean;
   isSuperAdmin?: boolean;
   eventInfo?: any;
+  guests?: Guest[];
+  onSubmitRsvp?: (data: { name: string; email?: string; phone?: string; companions?: number; status: 'confirmed' | 'declined'; message?: string }) => Promise<void>;
   onClaimGift: (giftId: string, data: { guestName: string; guestEmail?: string; guestPhone?: string; notes?: string }) => Promise<void>;
   onUnclaimGift: (giftId: string) => Promise<void>;
-  onAddCustomGift: (data: { name: string; category: GiftCategory; description?: string; priceRange?: string; isCustom?: boolean; claimedByGuestName?: string }) => Promise<void>;
+  onAddCustomGift: (data: { name: string; category: GiftCategory; description?: string; priceRange?: string; imageUrl?: string; isCustom?: boolean; claimedByGuestName?: string }) => Promise<void>;
   onNavigate: (route: 'home' | 'casal' | 'presentes' | 'login' | 'noiva') => void;
 }
 
@@ -37,6 +39,8 @@ export const GiftsPage: React.FC<GiftsPageProps> = ({
   isCoupleAdmin = false,
   isSuperAdmin = false,
   eventInfo,
+  guests = [],
+  onSubmitRsvp,
   onClaimGift,
   onUnclaimGift,
   onAddCustomGift,
@@ -59,13 +63,25 @@ export const GiftsPage: React.FC<GiftsPageProps> = ({
   // Custom Gift Modal
   const [isCustomGiftModalOpen, setIsCustomGiftModalOpen] = useState(false);
 
+  // RSVP Form state for unconfirmed guests
+  const [rsvpName, setRsvpName] = useState(guestSession?.name || '');
+  const [rsvpEmail, setRsvpEmail] = useState(guestSession?.email || '');
+  const [rsvpPhone, setRsvpPhone] = useState('');
+  const [rsvpStatus, setRsvpStatus] = useState<'confirmed' | 'declined'>('confirmed');
+  const [rsvpCompanions, setRsvpCompanions] = useState(0);
+  const [rsvpMessage, setRsvpMessage] = useState('');
+  const [isSubmittingRsvp, setIsSubmittingRsvp] = useState(false);
+  const [rsvpError, setRsvpError] = useState<string | null>(null);
+  const [rsvpDeclinedSubmitted, setRsvpDeclinedSubmitted] = useState(false);
+
   // 1. My Selected Gifts (Selected by current guest)
   const mySelectedGifts = useMemo(() => {
-    if (!guestSession) return [];
+    const currentName = guestSession?.name || rsvpName;
+    if (!currentName) return [];
     return gifts.filter(g => 
-      g.isClaimed && g.claimedByGuestName?.trim().toLowerCase() === guestSession.name.trim().toLowerCase()
+      g.isClaimed && g.claimedByGuestName?.trim().toLowerCase() === currentName.trim().toLowerCase()
     );
-  }, [gifts, guestSession]);
+  }, [gifts, guestSession, rsvpName]);
 
   // 2. Needed Gifts ("O que precisamos" - Not claimed by anyone yet)
   const neededGifts = useMemo(() => {
@@ -83,12 +99,13 @@ export const GiftsPage: React.FC<GiftsPageProps> = ({
 
   // Direct 1-Click Gift Selection
   const handleDirectClaim = async (gift: Gift) => {
-    if (!guestSession) return;
+    const currentName = guestSession?.name || rsvpName;
+    if (!currentName) return;
     try {
       setClaimingId(gift.id);
       await onClaimGift(gift.id, {
-        guestName: guestSession.name,
-        guestEmail: guestSession.email || undefined
+        guestName: currentName,
+        guestEmail: guestSession?.email || rsvpEmail || undefined
       });
     } catch (err) {
       console.error('Erro ao selecionar presente:', err);
@@ -108,103 +125,255 @@ export const GiftsPage: React.FC<GiftsPageProps> = ({
     }
   };
 
-  /* IF NOT LOGGED IN */
-  if (!guestSession) {
-    return (
-      <div className="max-w-lg mx-auto py-12 px-2 sm:px-0 animate-fade-in font-sans">
-        <div className="bg-white rounded-3xl p-8 sm:p-10 border border-[#E5DFD5] shadow-xl text-center space-y-6">
-          <div className="w-16 h-16 bg-[#F2ECE4] text-[#C5A059] rounded-2xl flex items-center justify-center mx-auto shadow-2xs border border-[#E5DFD5]">
-            <Lock className="w-8 h-8 text-[#C5A059]" />
-          </div>
+  // Handle RSVP confirmation directly on the gifts page
+  const handleRsvpSubmit = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!rsvpName.trim()) {
+      setRsvpError('Por favor, informe seu nome completo.');
+      return;
+    }
 
-          <div className="space-y-2">
-            <span className="text-[10px] font-bold uppercase tracking-[0.2em] text-[#C5A059] bg-[#FAF9F6] px-3.5 py-1 rounded-full border border-[#E5DFD5] inline-block">
-              Área Exclusiva de Convidados
-            </span>
-            <h2 className="text-2xl sm:text-3xl font-extrabold text-[#2D2D2D]">
-              Identifique-se para <span className="text-[#C5A059]">Acessar</span>
-            </h2>
-            <p className="text-xs sm:text-sm text-[#2D2D2D]/70 leading-relaxed max-w-sm mx-auto font-medium">
-              Para visualizar a lista de presentes e escolher o seu item especial, informe seu nome na confirmação de presença.
-            </p>
-          </div>
+    try {
+      setIsSubmittingRsvp(true);
+      setRsvpError(null);
 
-          <div className="space-y-3 pt-2">
-            <button
-              onClick={() => onNavigate('login')}
-              className="w-full py-4 bg-[#2D2D2D] hover:bg-black text-white text-xs font-bold uppercase tracking-[0.2em] rounded-2xl shadow-lg transition-all flex items-center justify-center space-x-2 active:scale-95 cursor-pointer"
-            >
-              <User className="w-4 h-4 text-[#C5A059]" />
-              <span>Aceitar Convite / Identificar-se</span>
-            </button>
+      if (onSubmitRsvp) {
+        await onSubmitRsvp({
+          name: rsvpName.trim(),
+          email: rsvpEmail.trim() || undefined,
+          phone: rsvpPhone.trim() || undefined,
+          companions: rsvpCompanions,
+          status: rsvpStatus,
+          message: rsvpMessage.trim() || undefined
+        });
+      }
 
-            <button
-              onClick={() => onNavigate('casal')}
-              className="w-full py-3 bg-[#FAF9F6] hover:bg-[#F2ECE4] text-[#2D2D2D] text-xs font-bold uppercase tracking-wider rounded-2xl border border-[#E5DFD5] transition-all flex items-center justify-center space-x-1.5 cursor-pointer"
-            >
-              <ArrowLeft className="w-3.5 h-3.5" />
-              <span>Ver Convite do Casal</span>
-            </button>
+      if (rsvpStatus === 'declined') {
+        setRsvpDeclinedSubmitted(true);
+      }
+    } catch (err) {
+      console.error('Erro ao registrar presença:', err);
+      setRsvpError('Ocorreu um erro ao registrar sua presença. Tente novamente.');
+    } finally {
+      setIsSubmittingRsvp(false);
+    }
+  };
+
+  /* ========================================================================= */
+  /* CASO NÃO TENHA CONFIRMADO PRESENÇA: MOSTRAR INICIALMENTE O CARD DE        */
+  /* CONFIRMAR PRESENÇA (CARD DE LISTA BLOQUEADA OCULTO/ELIMINADO)             */
+  /* CASO CONFIRMADO: MOSTRA AUTOMATICAMENTE OS PRODUTOS                       */
+  /* ========================================================================= */
+  if (!isPresenceConfirmed && !isCoupleAdmin && !isSuperAdmin) {
+    if (rsvpDeclinedSubmitted) {
+      return (
+        <div className="max-w-lg mx-auto py-10 px-2 sm:px-0 animate-fade-in font-sans">
+          <div className="bg-white rounded-3xl p-8 sm:p-10 border border-[#E5DFD5] shadow-xl text-center space-y-5">
+            <div className="w-14 h-14 bg-stone-100 text-[#C5A059] rounded-2xl flex items-center justify-center mx-auto shadow-2xs border border-stone-200">
+              <Heart className="w-7 h-7 fill-current" />
+            </div>
+
+            <div className="space-y-1">
+              <span className="text-[10px] font-bold uppercase tracking-widest text-stone-600 bg-stone-100 px-3 py-1 rounded-full border border-stone-200">
+                Resposta Registrada
+              </span>
+              <h2 className="text-2xl font-bold text-[#2D2D2D] pt-1">
+                Sentiremos sua falta! 💌
+              </h2>
+              <p className="text-xs sm:text-sm text-[#2D2D2D]/70 max-w-sm mx-auto leading-relaxed">
+                Registramos que você não poderá comparecer. Agradecemos pelo carinho com os noivos.
+              </p>
+            </div>
+
+            <div className="pt-2 space-y-2">
+              <button
+                type="button"
+                onClick={() => {
+                  setRsvpStatus('confirmed');
+                  setRsvpDeclinedSubmitted(false);
+                }}
+                className="w-full py-3.5 bg-[#C5A059] hover:bg-[#B38F48] text-white text-xs font-bold uppercase tracking-wider rounded-xl transition shadow-md active:scale-95 cursor-pointer"
+              >
+                Mudou de ideia? Confirmar Presença Agora
+              </button>
+
+              <button
+                type="button"
+                onClick={() => onNavigate('casal')}
+                className="w-full py-2.5 text-xs font-bold text-[#2D2D2D]/70 hover:text-[#2D2D2D] transition cursor-pointer"
+              >
+                Voltar ao Convite do Casal
+              </button>
+            </div>
           </div>
         </div>
-      </div>
-    );
-  }
+      );
+    }
 
-  /* IF LOGGED IN BUT PRESENCE NOT CONFIRMED (AND NOT ADMIN) */
-  if (!isPresenceConfirmed && !isCoupleAdmin && !isSuperAdmin) {
     return (
-      <div className="max-w-lg mx-auto py-10 px-2 sm:px-0 animate-fade-in font-sans">
-        <div className="bg-white rounded-3xl p-8 sm:p-10 border border-[#E5DFD5] shadow-xl text-center space-y-6">
-          <div className="w-16 h-16 bg-amber-50 text-amber-600 rounded-2xl flex items-center justify-center mx-auto shadow-2xs border border-amber-200">
-            <Lock className="w-8 h-8 text-amber-600" />
-          </div>
-
-          <div className="space-y-2">
-            <span className="text-[10px] font-bold uppercase tracking-[0.2em] text-amber-800 bg-amber-100 px-3.5 py-1 rounded-full border border-amber-200 inline-block">
-              Confirmação de Presença Obrigatória
-            </span>
-            <h2 className="text-2xl sm:text-3xl font-extrabold text-[#2D2D2D]">
-              Lista de Presentes <span className="text-[#C5A059]">Bloqueada</span>
-            </h2>
-            <p className="text-xs sm:text-sm text-[#2D2D2D]/75 leading-relaxed max-w-sm mx-auto font-medium">
-              Olá, <strong className="text-[#2D2D2D]">{guestSession?.name}</strong>! A lista de presentes dos noivos é exibida <strong>somente após a confirmação de presença</strong> no evento.
-            </p>
-          </div>
-
-          <div className="bg-[#FAF9F6] p-4 rounded-2xl border border-[#E5DFD5] text-left text-xs space-y-2">
-            <div className="flex items-center space-x-2 text-[#C5A059] font-bold">
-              <Heart className="w-4 h-4 fill-current" />
-              <span>Por que confirmar primeiro?</span>
+      <div className="max-w-lg mx-auto py-6 sm:py-10 px-2 sm:px-0 animate-fade-in font-sans">
+        <div className="bg-white rounded-[2rem] p-6 sm:p-8 border border-[#E5DFD5] shadow-xl space-y-6">
+          
+          {/* CARD HEADER */}
+          <div className="text-center space-y-2">
+            <div className="w-12 h-12 bg-[#FAF9F6] text-[#C5A059] rounded-2xl flex items-center justify-center mx-auto border border-[#E5DFD5] shadow-2xs">
+              <Users className="w-6 h-6" />
             </div>
-            <p className="text-[#2D2D2D]/70 text-[11px] leading-relaxed">
-              Os noivos planejam a quantidade de itens e a recepção com base na presença dos convidados. Assim que você confirmar sua presença, a lista é liberada imediatamente para você escolher o presente que desejar!
+            
+            <span className="text-[10px] font-bold uppercase tracking-[0.25em] text-[#C5A059] bg-[#FAF9F6] px-3.5 py-1 rounded-full border border-[#E5DFD5] inline-block">
+              Confirmação de Presença
+            </span>
+            
+            <h2 className="text-2xl sm:text-3xl font-extrabold text-[#2D2D2D] tracking-tight">
+              Confirme sua <span className="text-[#C5A059]">Presença</span>
+            </h2>
+            
+            <p className="text-xs sm:text-sm text-[#2D2D2D]/75 leading-relaxed max-w-sm mx-auto">
+              {eventInfo?.brideName && eventInfo?.groomName
+                ? `Confirme sua presença no Chá de Panela de ${eventInfo.brideName} & ${eventInfo.groomName} para acessar a lista de presentes!`
+                : 'Confirme sua presença para acessar a lista de presentes do casal!'}
             </p>
           </div>
 
-          <div className="space-y-3 pt-2">
+          {/* RSVP FORM */}
+          <form onSubmit={handleRsvpSubmit} className="space-y-4">
+            {rsvpError && (
+              <div className="p-3 text-xs bg-rose-50 text-rose-800 rounded-xl border border-rose-200 font-medium">
+                {rsvpError}
+              </div>
+            )}
+
+            {/* Presença Sim / Não */}
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-2.5">
+              <label 
+                className={`p-3.5 rounded-2xl border cursor-pointer transition flex items-center space-x-2.5 ${
+                  rsvpStatus === 'confirmed' 
+                    ? 'border-[#C5A059] bg-[#FAF9F6] text-[#2D2D2D] font-bold shadow-xs ring-1 ring-[#C5A059]/40' 
+                    : 'border-[#E5DFD5] bg-white hover:border-[#C5A059]/50'
+                }`}
+              >
+                <input 
+                  type="radio" 
+                  name="rsvpStatus" 
+                  value="confirmed" 
+                  checked={rsvpStatus === 'confirmed'} 
+                  onChange={() => setRsvpStatus('confirmed')}
+                  className="w-4 h-4 text-[#C5A059] focus:ring-[#C5A059]"
+                />
+                <span className="text-xs leading-tight">Sim, com certeza vou! 🎉</span>
+              </label>
+
+              <label 
+                className={`p-3.5 rounded-2xl border cursor-pointer transition flex items-center space-x-2.5 ${
+                  rsvpStatus === 'declined' 
+                    ? 'border-[#2D2D2D]/40 bg-stone-50 text-[#2D2D2D] font-bold shadow-xs' 
+                    : 'border-[#E5DFD5] bg-white hover:border-[#2D2D2D]/30'
+                }`}
+              >
+                <input 
+                  type="radio" 
+                  name="rsvpStatus" 
+                  value="declined" 
+                  checked={rsvpStatus === 'declined'} 
+                  onChange={() => setRsvpStatus('declined')}
+                  className="w-4 h-4 text-[#2D2D2D] focus:ring-[#2D2D2D]"
+                />
+                <span className="text-xs leading-tight">Infelizmente não vou 💔</span>
+              </label>
+            </div>
+
+            {/* Nome Completo */}
+            <div>
+              <label className="block text-[10px] font-bold text-[#2D2D2D]/70 uppercase tracking-[0.2em] mb-1">
+                Seu Nome Completo <span className="text-[#C5A059]">*</span>
+              </label>
+              <input 
+                type="text"
+                required
+                placeholder="Ex: Beatriz Silva"
+                value={rsvpName}
+                onChange={e => setRsvpName(e.target.value)}
+                className="w-full px-4 py-3 text-xs border border-[#E5DFD5] bg-[#FAF9F6] rounded-xl focus:border-[#C5A059] outline-none transition"
+              />
+            </div>
+
+            {/* Acompanhantes e WhatsApp */}
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+              <div>
+                <label className="block text-[10px] font-bold text-[#2D2D2D]/70 uppercase tracking-[0.2em] mb-1">
+                  Acompanhantes
+                </label>
+                <div className="flex items-center space-x-2">
+                  <button
+                    type="button"
+                    onClick={() => setRsvpCompanions(Math.max(0, rsvpCompanions - 1))}
+                    className="w-10 h-10 rounded-xl bg-[#FAF9F6] border border-[#E5DFD5] text-[#2D2D2D] font-bold flex items-center justify-center hover:bg-[#F2ECE4] transition"
+                  >
+                    -
+                  </button>
+                  <span className="flex-1 text-center font-bold text-xs">
+                    {rsvpCompanions} {rsvpCompanions === 1 ? 'pessoa' : 'pessoas'}
+                  </span>
+                  <button
+                    type="button"
+                    onClick={() => setRsvpCompanions(rsvpCompanions + 1)}
+                    className="w-10 h-10 rounded-xl bg-[#FAF9F6] border border-[#E5DFD5] text-[#2D2D2D] font-bold flex items-center justify-center hover:bg-[#F2ECE4] transition"
+                  >
+                    +
+                  </button>
+                </div>
+              </div>
+
+              <div>
+                <label className="block text-[10px] font-bold text-[#2D2D2D]/70 uppercase tracking-[0.2em] mb-1">
+                  WhatsApp / Telefone (opcional)
+                </label>
+                <input 
+                  type="tel"
+                  placeholder="(00) 00000-0000"
+                  value={rsvpPhone}
+                  onChange={e => setRsvpPhone(e.target.value)}
+                  className="w-full px-4 py-3 text-xs border border-[#E5DFD5] bg-[#FAF9F6] rounded-xl focus:border-[#C5A059] outline-none transition"
+                />
+              </div>
+            </div>
+
+            {/* Mensagem Opcional */}
+            <div>
+              <label className="block text-[10px] font-bold text-[#2D2D2D]/70 uppercase tracking-[0.2em] mb-1">
+                Recado para os noivos (opcional)
+              </label>
+              <textarea 
+                rows={2}
+                placeholder="Deixe uma mensagem de carinho..."
+                value={rsvpMessage}
+                onChange={e => setRsvpMessage(e.target.value)}
+                className="w-full px-4 py-2.5 text-xs border border-[#E5DFD5] bg-[#FAF9F6] rounded-xl focus:border-[#C5A059] outline-none transition resize-none"
+              />
+            </div>
+
+            {/* Botão de Envio */}
             <button
-              onClick={() => {
-                onNavigate('casal');
-                setTimeout(() => {
-                  const el = document.getElementById('confirmar-presenca');
-                  if (el) el.scrollIntoView({ behavior: 'smooth' });
-                }, 100);
-              }}
-              className="w-full py-4 bg-[#C5A059] hover:bg-[#B38F48] text-white text-xs font-bold uppercase tracking-[0.2em] rounded-2xl shadow-lg transition-all flex items-center justify-center space-x-2 active:scale-95 cursor-pointer"
+              type="submit"
+              disabled={isSubmittingRsvp}
+              className="w-full py-4 bg-[#C5A059] hover:bg-[#B38F48] text-white font-bold text-xs uppercase tracking-[0.2em] rounded-2xl shadow-lg transition-all flex items-center justify-center space-x-2 active:scale-95 disabled:opacity-50 cursor-pointer pt-3"
             >
               <CheckCircle2 className="w-4 h-4" />
-              <span>Confirmar Minha Presença Agora</span>
+              <span>{isSubmittingRsvp ? 'Confirmando...' : 'Confirmar Presença e Ver Presentes'}</span>
               <ArrowRight className="w-4 h-4" />
             </button>
+          </form>
 
+          <div className="pt-2 text-center">
             <button
-              onClick={() => onNavigate('home')}
-              className="w-full py-3 bg-[#FAF9F6] hover:bg-[#F2ECE4] text-[#2D2D2D]/70 hover:text-[#2D2D2D] text-xs font-bold uppercase tracking-wider rounded-2xl border border-[#E5DFD5] transition-all cursor-pointer"
+              type="button"
+              onClick={() => onNavigate('casal')}
+              className="text-[11px] font-bold text-[#2D2D2D]/60 hover:text-[#2D2D2D] hover:underline"
             >
-              Voltar para a Página Inicial
+              ← Voltar ao Convite do Casal
             </button>
           </div>
+
         </div>
       </div>
     );
@@ -231,6 +400,8 @@ export const GiftsPage: React.FC<GiftsPageProps> = ({
   const percentageCompleted = gifts.length > 0 
     ? Math.round((acquiredGifts.length / gifts.length) * 100) 
     : 0;
+
+  const displayedGuestName = guestSession?.name || rsvpName || 'Convidado';
 
   return (
     <div className="max-w-2xl mx-auto space-y-4 pb-14 animate-fade-in px-2 sm:px-0 font-sans">
@@ -268,9 +439,9 @@ export const GiftsPage: React.FC<GiftsPageProps> = ({
       {/* USER LOGGED IN BAR */}
       <div className="bg-[#FAF9F6] border border-[#E5DFD5] rounded-xl p-2.5 px-3.5 flex items-center justify-between text-xs">
         <div className="flex items-center space-x-2 truncate">
-          <User className="w-3.5 h-3.5 text-[#C5A059] shrink-0" />
-          <span className="text-[#2D2D2D]/70 text-[11px]">Convidado com presença confirmada:</span>
-          <strong className="text-[#2D2D2D] font-bold text-[11px] truncate">{guestSession.name}</strong>
+          <CheckCircle2 className="w-3.5 h-3.5 text-emerald-600 shrink-0" />
+          <span className="text-[#2D2D2D]/70 text-[11px]">Presença confirmada:</span>
+          <strong className="text-[#2D2D2D] font-bold text-[11px] truncate">{displayedGuestName}</strong>
         </div>
         <button
           onClick={() => onNavigate('login')}
@@ -298,6 +469,24 @@ export const GiftsPage: React.FC<GiftsPageProps> = ({
         </div>
       </div>
 
+      {/* RECADO / DICA GERAL DOS NOIVOS SOBRE OS PRESENTES */}
+      {eventInfo?.giftPreferencesGuide && (
+        <div className="bg-gradient-to-br from-[#FAF9F6] via-white to-[#F2ECE4] border border-[#C5A059]/40 rounded-2xl p-4 sm:p-5 shadow-xs space-y-2 animate-fade-in">
+          <div className="flex items-center space-x-2 text-[#C5A059]">
+            <Sparkles className="w-4 h-4 fill-current shrink-0" />
+            <h3 className="font-serif italic font-bold text-sm sm:text-base text-[#2D2D2D]">
+              Recadinho dos Noivos para a Escolha dos Presentes
+            </h3>
+          </div>
+          <p className="text-xs sm:text-sm text-[#2D2D2D]/85 leading-relaxed font-sans italic bg-white/80 p-3.5 rounded-xl border border-[#E5DFD5]">
+            "{eventInfo.giftPreferencesGuide}"
+          </p>
+          <p className="text-[10px] text-[#2D2D2D]/55 font-sans">
+            ✨ Dica do casal sobre a paleta de cores, estilo e preferências para os cômodos da casa nova!
+          </p>
+        </div>
+      )}
+
       {/* ========================================================================= */}
       {/* SEUS PRESENTES ESCOLHIDOS (DESTAQUE NO TOPO SE O CONVIDADO JÁ RESERVOU)    */}
       {/* ========================================================================= */}
@@ -316,7 +505,7 @@ export const GiftsPage: React.FC<GiftsPageProps> = ({
                   </span>
                 </h2>
                 <p className="text-[10px] text-emerald-800">
-                  Reservados em seu nome ({guestSession.name}). Muito obrigado pelo carinho!
+                  Reservados em seu nome ({displayedGuestName}). Muito obrigado pelo carinho!
                 </p>
               </div>
             </div>
@@ -331,24 +520,37 @@ export const GiftsPage: React.FC<GiftsPageProps> = ({
                   key={gift.id}
                   className="bg-white border border-emerald-200 rounded-xl p-3 shadow-2xs flex items-center justify-between gap-2.5 transition"
                 >
-                  <div className="space-y-0.5 min-w-0 flex-1">
-                    <div className="flex items-center space-x-1.5 flex-wrap">
-                      <span className="text-[8px] font-bold text-emerald-800 uppercase tracking-wider bg-emerald-50 px-2 py-0.5 rounded-full border border-emerald-200">
-                        {gift.category}
-                      </span>
-                      <span className="text-[9px] text-emerald-700 font-bold flex items-center space-x-1">
-                        <CheckCircle2 className="w-3 h-3 text-emerald-600" />
-                        <span>Garantido por você</span>
-                      </span>
-                    </div>
-                    <h3 className="font-bold text-xs sm:text-sm text-[#2D2D2D] break-words whitespace-normal pt-0.5">
-                      {gift.name}
-                    </h3>
-                    {gift.priceRange && (
-                      <p className="text-[10px] font-semibold text-[#C5A059]">
-                        Faixa estimada: {gift.priceRange}
-                      </p>
+                  <div className="flex items-center space-x-3 min-w-0 flex-1">
+                    {gift.imageUrl ? (
+                      <img 
+                        src={gift.imageUrl} 
+                        alt={gift.name} 
+                        className="w-12 h-12 rounded-xl object-cover border border-emerald-300 shrink-0 shadow-2xs" 
+                      />
+                    ) : (
+                      <div className="w-12 h-12 rounded-xl bg-emerald-50 border border-emerald-200 flex items-center justify-center shrink-0 text-emerald-600 shadow-2xs">
+                        <GiftIcon className="w-5 h-5" />
+                      </div>
                     )}
+                    <div className="space-y-0.5 min-w-0 flex-1">
+                      <div className="flex items-center space-x-1.5 flex-wrap">
+                        <span className="text-[8px] font-bold text-emerald-800 uppercase tracking-wider bg-emerald-50 px-2 py-0.5 rounded-full border border-emerald-200">
+                          {gift.category}
+                        </span>
+                        <span className="text-[9px] text-emerald-700 font-bold flex items-center space-x-1">
+                          <CheckCircle2 className="w-3 h-3 text-emerald-600" />
+                          <span>Garantido por você</span>
+                        </span>
+                      </div>
+                      <h3 className="font-bold text-xs sm:text-sm text-[#2D2D2D] break-words whitespace-normal pt-0.5">
+                        {gift.name}
+                      </h3>
+                      {gift.priceRange && (
+                        <p className="text-[10px] font-semibold text-[#C5A059]">
+                          Faixa estimada: {gift.priceRange}
+                        </p>
+                      )}
+                    </div>
                   </div>
 
                   <button
@@ -533,17 +735,30 @@ export const GiftsPage: React.FC<GiftsPageProps> = ({
                           <button
                             type="button"
                             onClick={() => toggleGiftAccordion(gift.id)}
-                            className="w-full p-3.5 flex items-center justify-between text-left hover:bg-[#FAF9F6] transition cursor-pointer gap-2.5"
+                            className="w-full p-3 sm:p-3.5 flex items-center justify-between text-left hover:bg-[#FAF9F6] transition cursor-pointer gap-2.5"
                           >
-                            <div className="space-y-0.5 min-w-0 flex-1">
-                              <h4 className="font-bold text-xs sm:text-sm text-[#2D2D2D] leading-snug break-words whitespace-normal">
-                                {gift.name}
-                              </h4>
-                              {gift.priceRange && (
-                                <span className="text-[10px] text-[#C5A059] font-semibold block pt-0.5">
-                                  Faixa: {gift.priceRange}
-                                </span>
+                            <div className="flex items-center space-x-3 min-w-0 flex-1">
+                              {gift.imageUrl ? (
+                                <img 
+                                  src={gift.imageUrl} 
+                                  alt={gift.name} 
+                                  className="w-12 h-12 sm:w-14 sm:h-14 rounded-xl object-cover border border-[#E5DFD5] shrink-0 shadow-2xs" 
+                                />
+                              ) : (
+                                <div className="w-12 h-12 sm:w-14 sm:h-14 rounded-xl bg-[#FAF9F6] border border-[#E5DFD5] flex items-center justify-center shrink-0 text-[#C5A059] shadow-2xs">
+                                  <GiftIcon className="w-5 h-5 sm:w-6 sm:h-6" />
+                                </div>
                               )}
+                              <div className="space-y-0.5 min-w-0 flex-1">
+                                <h4 className="font-bold text-xs sm:text-sm text-[#2D2D2D] leading-snug break-words whitespace-normal">
+                                  {gift.name}
+                                </h4>
+                                {gift.priceRange && (
+                                  <span className="text-[10px] text-[#C5A059] font-semibold block pt-0.5">
+                                    Faixa: {gift.priceRange}
+                                  </span>
+                                )}
+                              </div>
                             </div>
 
                             <div className="flex items-center space-x-1.5 shrink-0 ml-1">
@@ -559,6 +774,16 @@ export const GiftsPage: React.FC<GiftsPageProps> = ({
                           {/* ACCORDION CONTENT */}
                           {isItemExpanded && (
                             <div className="p-3.5 pt-2 border-t border-[#E5DFD5] bg-[#FAF9F6] space-y-3 text-xs">
+                              {gift.imageUrl && (
+                                <div className="rounded-xl overflow-hidden border border-[#E5DFD5] bg-white p-2 shadow-2xs max-w-xs mx-auto sm:mx-0">
+                                  <img 
+                                    src={gift.imageUrl} 
+                                    alt={gift.name} 
+                                    className="w-full max-h-56 object-contain rounded-lg bg-[#FAF9F6]" 
+                                  />
+                                </div>
+                              )}
+
                               {gift.description ? (
                                 <div className="space-y-1">
                                   <span className="text-[9px] font-bold text-[#2D2D2D]/60 uppercase tracking-wider block">
@@ -677,8 +902,9 @@ export const GiftsPage: React.FC<GiftsPageProps> = ({
                   {/* ACQUIRED GIFTS LIST (ANONYMIZED - NO GUEST EXPOSURE) */}
                   <div className="space-y-2">
                     {categoryGifts.map(gift => {
-                      const isClaimedByCurrentGuest = guestSession && 
-                        gift.claimedByGuestName?.trim().toLowerCase() === guestSession.name.trim().toLowerCase();
+                      const currentName = guestSession?.name || rsvpName;
+                      const isClaimedByCurrentGuest = Boolean(currentName && 
+                        gift.claimedByGuestName?.trim().toLowerCase() === currentName.trim().toLowerCase());
                       const isUnclaiming = unclaimingId === gift.id;
 
                       return (
@@ -691,34 +917,47 @@ export const GiftsPage: React.FC<GiftsPageProps> = ({
                           }`}
                         >
                           <div className="flex items-start justify-between gap-3">
-                            <div className="space-y-1 min-w-0 flex-1">
-                              <div className="flex items-center space-x-1.5 flex-wrap">
-                                <span className="text-[8px] font-bold text-[#2D2D2D]/60 uppercase tracking-wider bg-[#FAF9F6] px-2 py-0.5 rounded-full border border-[#E5DFD5]">
-                                  {gift.category}
-                                </span>
-                                
-                                {isClaimedByCurrentGuest ? (
-                                  <span className="text-[9px] font-bold text-emerald-800 bg-emerald-100 border border-emerald-200 px-2 py-0.5 rounded-full flex items-center space-x-1">
-                                    <CheckCircle2 className="w-3 h-3 text-emerald-600" />
-                                    <span>Escolhido por você</span>
+                            <div className="flex items-center space-x-3 min-w-0 flex-1">
+                              {gift.imageUrl ? (
+                                <img 
+                                  src={gift.imageUrl} 
+                                  alt={gift.name} 
+                                  className="w-12 h-12 rounded-xl object-cover border border-[#E5DFD5] shrink-0 shadow-2xs" 
+                                />
+                              ) : (
+                                <div className="w-12 h-12 rounded-xl bg-[#FAF9F6] border border-[#E5DFD5] flex items-center justify-center shrink-0 text-[#C5A059] shadow-2xs">
+                                  <GiftIcon className="w-5 h-5" />
+                                </div>
+                              )}
+                              <div className="space-y-1 min-w-0 flex-1">
+                                <div className="flex items-center space-x-1.5 flex-wrap">
+                                  <span className="text-[8px] font-bold text-[#2D2D2D]/60 uppercase tracking-wider bg-[#FAF9F6] px-2 py-0.5 rounded-full border border-[#E5DFD5]">
+                                    {gift.category}
                                   </span>
-                                ) : (
-                                  <span className="text-[9px] font-medium text-[#2D2D2D]/75 bg-[#F2ECE4] border border-[#E5DFD5] px-2 py-0.5 rounded-full flex items-center space-x-1">
-                                    <Lock className="w-2.5 h-2.5 text-[#C5A059]" />
-                                    <span>Já garantido para o casal</span>
-                                  </span>
+                                  
+                                  {isClaimedByCurrentGuest ? (
+                                    <span className="text-[9px] font-bold text-emerald-800 bg-emerald-100 border border-emerald-200 px-2 py-0.5 rounded-full flex items-center space-x-1">
+                                      <CheckCircle2 className="w-3 h-3 text-emerald-600" />
+                                      <span>Escolhido por você</span>
+                                    </span>
+                                  ) : (
+                                    <span className="text-[9px] font-medium text-[#2D2D2D]/75 bg-[#F2ECE4] border border-[#E5DFD5] px-2 py-0.5 rounded-full flex items-center space-x-1">
+                                      <Lock className="w-2.5 h-2.5 text-[#C5A059]" />
+                                      <span>Já garantido para o casal</span>
+                                    </span>
+                                  )}
+                                </div>
+
+                                <h4 className="font-bold text-xs sm:text-sm text-[#2D2D2D] leading-snug break-words whitespace-normal pt-0.5">
+                                  {gift.name}
+                                </h4>
+
+                                {gift.description && (
+                                  <p className="text-[11px] text-[#2D2D2D]/65 line-clamp-2">
+                                    {gift.description}
+                                  </p>
                                 )}
                               </div>
-
-                              <h4 className="font-bold text-xs sm:text-sm text-[#2D2D2D] leading-snug break-words whitespace-normal pt-0.5">
-                                {gift.name}
-                              </h4>
-
-                              {gift.description && (
-                                <p className="text-[11px] text-[#2D2D2D]/65 line-clamp-2">
-                                  {gift.description}
-                                </p>
-                              )}
                             </div>
 
                             {/* RIGHT ACTION: IF MINE, SHOW DESMARCAR; IF ANOTHER'S, SHOW INDISPONÍVEL */}
@@ -754,7 +993,7 @@ export const GiftsPage: React.FC<GiftsPageProps> = ({
       {/* CUSTOM GIFT MODAL */}
       <CustomGiftModal
         isOpen={isCustomGiftModalOpen}
-        guestName={guestSession.name}
+        guestName={displayedGuestName}
         onClose={() => setIsCustomGiftModalOpen(false)}
         onSubmit={async (data) => {
           await onAddCustomGift(data);

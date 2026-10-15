@@ -1,12 +1,13 @@
-import React, { useState } from 'react';
+import React, { useState, useRef, useEffect } from 'react';
 import { GiftCategory } from '../types';
-import { Gift, X, Plus, Sparkles } from 'lucide-react';
+import { Gift, X, Plus, Sparkles, Upload, Image as ImageIcon, Trash2, Loader2 } from 'lucide-react';
 
 interface CustomGiftModalProps {
   isOpen: boolean;
   onClose: () => void;
-  onAdd: (data: { name: string; category: GiftCategory; description?: string; priceRange?: string; isCustom?: boolean; claimedByGuestName?: string }) => Promise<void>;
+  onAdd: (data: { name: string; category: GiftCategory; description?: string; priceRange?: string; imageUrl?: string; isCustom?: boolean; claimedByGuestName?: string }) => Promise<void>;
   isGuestView?: boolean;
+  guestName?: string;
 }
 
 const CATEGORIES: GiftCategory[] = [
@@ -18,16 +19,106 @@ const CATEGORIES: GiftCategory[] = [
   'Mimos e Outros'
 ];
 
-export const CustomGiftModal: React.FC<CustomGiftModalProps> = ({ isOpen, onClose, onAdd, isGuestView = false }) => {
+export const CustomGiftModal: React.FC<CustomGiftModalProps> = ({ 
+  isOpen, 
+  onClose, 
+  onAdd, 
+  isGuestView = false,
+  guestName: initialGuestName = '' 
+}) => {
   const [name, setName] = useState('');
   const [category, setCategory] = useState<GiftCategory>('Cozinha');
   const [description, setDescription] = useState('');
   const [priceRange, setPriceRange] = useState('');
-  const [guestName, setGuestName] = useState('');
+  const [imageUrl, setImageUrl] = useState('');
+  const [guestName, setGuestName] = useState(initialGuestName);
   const [loading, setLoading] = useState(false);
+  const [uploadingImage, setUploadingImage] = useState(false);
   const [error, setError] = useState('');
+  const fileInputRef = useRef<HTMLInputElement>(null);
+
+  useEffect(() => {
+    if (initialGuestName) {
+      setGuestName(initialGuestName);
+    }
+  }, [initialGuestName, isOpen]);
 
   if (!isOpen) return null;
+
+  const handleImageUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+
+    if (!file.type.startsWith('image/')) {
+      setError('Por favor, selecione um arquivo de imagem válido (JPG, PNG).');
+      return;
+    }
+
+    setUploadingImage(true);
+    setError('');
+
+    const reader = new FileReader();
+    reader.onload = (event) => {
+      const img = new Image();
+      img.onload = async () => {
+        try {
+          const canvas = document.createElement('canvas');
+          let width = img.width;
+          let height = img.height;
+          const MAX_SIZE = 700;
+
+          if (width > height) {
+            if (width > MAX_SIZE) {
+              height = Math.round(height * (MAX_SIZE / width));
+              width = MAX_SIZE;
+            }
+          } else {
+            if (height > MAX_SIZE) {
+              width = Math.round(width * (MAX_SIZE / height));
+              height = MAX_SIZE;
+            }
+          }
+
+          canvas.width = width;
+          canvas.height = height;
+          const ctx = canvas.getContext('2d');
+          let base64Data = '';
+          if (ctx) {
+            ctx.drawImage(img, 0, 0, width, height);
+            base64Data = canvas.toDataURL('image/jpeg', 0.80);
+          } else {
+            base64Data = event.target?.result as string;
+          }
+
+          try {
+            const res = await fetch('/api/upload', {
+              method: 'POST',
+              headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify({ image: base64Data, fileName: file.name })
+            });
+            if (res.ok) {
+              const resData = await res.json();
+              if (resData.url) {
+                setImageUrl(resData.url);
+                setUploadingImage(false);
+                return;
+              }
+            }
+          } catch (uploadErr) {
+            console.warn('Server upload fallback:', uploadErr);
+          }
+
+          setImageUrl(base64Data);
+        } catch (err: any) {
+          setError('Erro ao processar imagem.');
+        } finally {
+          setUploadingImage(false);
+        }
+      };
+      img.src = event.target?.result as string;
+    };
+    reader.readAsDataURL(file);
+  };
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -49,6 +140,7 @@ export const CustomGiftModal: React.FC<CustomGiftModalProps> = ({ isOpen, onClos
         category,
         description: description.trim() || undefined,
         priceRange: priceRange.trim() || undefined,
+        imageUrl: imageUrl.trim() || undefined,
         isCustom: isGuestView,
         claimedByGuestName: isGuestView ? guestName.trim() : undefined
       });
@@ -56,7 +148,7 @@ export const CustomGiftModal: React.FC<CustomGiftModalProps> = ({ isOpen, onClos
       setName('');
       setDescription('');
       setPriceRange('');
-      setGuestName('');
+      setImageUrl('');
       onClose();
     } catch (err: any) {
       setError(err.message || 'Erro ao salvar. Tente novamente.');
@@ -172,6 +264,64 @@ export const CustomGiftModal: React.FC<CustomGiftModalProps> = ({ isOpen, onClos
               onChange={e => setDescription(e.target.value)}
               className="w-full px-4 py-3 text-base sm:text-sm border border-[#E5DFD5] bg-[#FAF9F6] rounded-2xl focus:border-[#C5A059] focus:bg-white outline-none transition font-sans resize-none"
             />
+          </div>
+
+          <div>
+            <label className="block text-[10px] sm:text-xs font-bold text-[#2D2D2D] uppercase tracking-[0.15em] mb-1.5">
+              Foto do Presente (Opcional)
+            </label>
+            <input 
+              type="file"
+              ref={fileInputRef}
+              onChange={handleImageUpload}
+              accept="image/*"
+              className="hidden"
+            />
+            <div className="flex items-center space-x-3 bg-[#FAF9F6] p-3 rounded-2xl border border-[#E5DFD5]">
+              {imageUrl ? (
+                <div className="relative w-16 h-16 rounded-xl overflow-hidden shrink-0 border border-[#C5A059]">
+                  <img src={imageUrl} alt="Preview" className="w-full h-full object-cover" />
+                  <button
+                    type="button"
+                    onClick={() => setImageUrl('')}
+                    className="absolute top-0.5 right-0.5 bg-rose-600 text-white p-0.5 rounded-full shadow-xs"
+                  >
+                    <Trash2 className="w-3 h-3" />
+                  </button>
+                </div>
+              ) : (
+                <div className="w-16 h-16 rounded-xl bg-[#F2ECE4] border border-dashed border-[#C5A059]/50 flex items-center justify-center shrink-0 text-[#C5A059]">
+                  <ImageIcon className="w-6 h-6" />
+                </div>
+              )}
+              <div className="flex-1 space-y-1.5">
+                <button
+                  type="button"
+                  disabled={uploadingImage}
+                  onClick={() => fileInputRef.current?.click()}
+                  className="px-3 py-1.5 bg-white hover:bg-[#F2ECE4] text-[#2D2D2D] border border-[#E5DFD5] rounded-xl text-xs font-bold uppercase tracking-wider flex items-center space-x-1.5 shadow-2xs transition active:scale-95 cursor-pointer disabled:opacity-50"
+                >
+                  {uploadingImage ? (
+                    <>
+                      <Loader2 className="w-3.5 h-3.5 text-[#C5A059] animate-spin" />
+                      <span>Processando Foto...</span>
+                    </>
+                  ) : (
+                    <>
+                      <Upload className="w-3.5 h-3.5 text-[#C5A059]" />
+                      <span>{imageUrl ? 'Trocar Foto' : 'Enviar Foto'}</span>
+                    </>
+                  )}
+                </button>
+                <input 
+                  type="url"
+                  placeholder="Ou cole o link da foto (URL)..."
+                  value={imageUrl}
+                  onChange={e => setImageUrl(e.target.value)}
+                  className="w-full px-3 py-1.5 text-xs border border-[#E5DFD5] bg-white rounded-xl focus:border-[#C5A059] outline-none font-sans"
+                />
+              </div>
+            </div>
           </div>
 
           <div className="pt-3 border-t border-[#E5DFD5] flex items-center justify-end space-x-3 pb-2">

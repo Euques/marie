@@ -250,7 +250,7 @@ async function startServer() {
   });
 
   app.post('/api/gifts', (req, res) => {
-    const { name, category, description, priceRange, suggestedUrl, isCustom, claimedByGuestName } = req.body;
+    const { name, category, description, priceRange, suggestedUrl, imageUrl, isCustom, claimedByGuestName } = req.body;
     if (!name || typeof name !== 'string') {
       return res.status(400).json({ error: 'Nome do presente é obrigatório' });
     }
@@ -262,6 +262,7 @@ async function startServer() {
       description: description ? description.trim() : undefined,
       priceRange: priceRange ? priceRange.trim() : undefined,
       suggestedUrl: suggestedUrl ? suggestedUrl.trim() : undefined,
+      imageUrl: imageUrl ? imageUrl.trim() : undefined,
       isClaimed: false,
       isCustom: Boolean(isCustom)
     };
@@ -288,6 +289,12 @@ async function startServer() {
     const updated: Gift = {
       ...current,
       ...req.body,
+      name: req.body.name !== undefined ? req.body.name.trim() : current.name,
+      category: req.body.category !== undefined ? req.body.category : current.category,
+      description: req.body.description !== undefined ? req.body.description.trim() : current.description,
+      priceRange: req.body.priceRange !== undefined ? req.body.priceRange.trim() : current.priceRange,
+      suggestedUrl: req.body.suggestedUrl !== undefined ? (req.body.suggestedUrl ? req.body.suggestedUrl.trim() : undefined) : current.suggestedUrl,
+      imageUrl: req.body.imageUrl !== undefined ? (req.body.imageUrl ? req.body.imageUrl.trim() : undefined) : current.imageUrl,
       id: current.id
     };
 

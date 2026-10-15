@@ -133,6 +133,31 @@ export const AdminPanel: React.FC<AdminPanelProps> = ({
   const [settingsLoading, setSettingsLoading] = useState(false);
   const [settingsSuccess, setSettingsSuccess] = useState(false);
 
+  // Couple gift preferences note / general reference state
+  const [isEditingPreferencesNote, setIsEditingPreferencesNote] = useState(false);
+  const [preferencesNoteText, setPreferencesNoteText] = useState(eventInfo.giftPreferencesGuide || '');
+  const [savingPreferencesNote, setSavingPreferencesNote] = useState(false);
+
+  useEffect(() => {
+    setEventForm(eventInfo);
+    if (eventInfo.giftPreferencesGuide !== undefined) {
+      setPreferencesNoteText(eventInfo.giftPreferencesGuide);
+    }
+  }, [eventInfo]);
+
+  const handleSavePreferencesNote = async () => {
+    try {
+      setSavingPreferencesNote(true);
+      await onUpdateEventInfo({ giftPreferencesGuide: preferencesNoteText.trim() });
+      setEventForm(prev => ({ ...prev, giftPreferencesGuide: preferencesNoteText.trim() }));
+      setIsEditingPreferencesNote(false);
+    } catch (err) {
+      console.error(err);
+    } finally {
+      setSavingPreferencesNote(false);
+    }
+  };
+
   // Copy WhatsApp link state
   const [copiedInvite, setCopiedInvite] = useState(false);
   const [resetConfirming, setResetConfirming] = useState(false);
@@ -1159,6 +1184,77 @@ export const AdminPanel: React.FC<AdminPanelProps> = ({
             </div>
           </div>
 
+          {/* CARD DE DICAS GERAIS E PALETA DE CORES DOS NOIVOS */}
+          <div className="bg-gradient-to-br from-[#FAF9F6] to-[#F2ECE4] border border-[#C5A059]/40 rounded-3xl p-5 sm:p-6 shadow-xs space-y-3">
+            <div className="flex items-center justify-between gap-2 border-b border-[#E5DFD5] pb-3">
+              <div className="flex items-center space-x-2.5">
+                <div className="w-9 h-9 rounded-xl bg-[#2D2D2D] text-[#C5A059] flex items-center justify-center shrink-0 shadow-2xs">
+                  <Sparkles className="w-4 h-4 text-[#C5A059]" />
+                </div>
+                <div>
+                  <h3 className="font-bold text-sm text-[#2D2D2D]">
+                    Dica Geral e Paleta de Cores dos Noivos
+                  </h3>
+                  <p className="text-[11px] text-[#2D2D2D]/60 font-sans">
+                    Texto corrido exibido no topo da lista dos convidados para orientar preferências sem precisar descrever item por item
+                  </p>
+                </div>
+              </div>
+
+              {!isEditingPreferencesNote && (
+                <button
+                  type="button"
+                  onClick={() => setIsEditingPreferencesNote(true)}
+                  className="px-3 py-1.5 bg-white hover:bg-[#FAF9F6] text-[#2D2D2D] border border-[#E5DFD5] rounded-xl text-xs font-bold transition flex items-center space-x-1 shadow-2xs cursor-pointer active:scale-95 shrink-0"
+                >
+                  <Edit className="w-3.5 h-3.5 text-[#C5A059]" />
+                  <span>{eventForm.giftPreferencesGuide ? 'Editar Dica' : 'Adicionar Dica'}</span>
+                </button>
+              )}
+            </div>
+
+            {isEditingPreferencesNote ? (
+              <div className="space-y-3 pt-1">
+                <textarea
+                  rows={3}
+                  value={preferencesNoteText}
+                  onChange={e => setPreferencesNoteText(e.target.value)}
+                  placeholder="Ex: Oi queridos! Para ajudar na escolha pensamos em uma cozinha com itens verde e amarelo, no quarto marrom e azul, no banheiro branco, obrigada!"
+                  className="w-full px-4 py-3 text-xs border border-[#C5A059] bg-white rounded-2xl focus:ring-1 focus:ring-[#C5A059] outline-none transition font-sans resize-none"
+                />
+                <div className="flex items-center justify-end space-x-2">
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setPreferencesNoteText(eventForm.giftPreferencesGuide || '');
+                      setIsEditingPreferencesNote(false);
+                    }}
+                    className="px-4 py-2 text-xs font-bold text-[#2D2D2D] hover:bg-white rounded-xl transition cursor-pointer"
+                  >
+                    Cancelar
+                  </button>
+                  <button
+                    type="button"
+                    disabled={savingPreferencesNote}
+                    onClick={handleSavePreferencesNote}
+                    className="px-5 py-2 bg-[#2D2D2D] hover:bg-black text-white text-xs font-bold rounded-xl transition flex items-center space-x-1.5 shadow-xs cursor-pointer active:scale-95 disabled:opacity-50"
+                  >
+                    <Check className="w-3.5 h-3.5 text-[#C5A059]" />
+                    <span>{savingPreferencesNote ? 'Salvando...' : 'Salvar Dica Geral'}</span>
+                  </button>
+                </div>
+              </div>
+            ) : eventForm.giftPreferencesGuide ? (
+              <div className="bg-white p-3.5 rounded-2xl border border-[#E5DFD5] text-xs text-[#2D2D2D]/85 italic font-sans leading-relaxed">
+                "{eventForm.giftPreferencesGuide}"
+              </div>
+            ) : (
+              <p className="text-xs text-[#2D2D2D]/50 italic">
+                Nenhuma dica geral adicionada ainda. Clique em "Adicionar Dica" para orientar os convidados sobre a paleta de cores e cômodos!
+              </p>
+            )}
+          </div>
+
           {/* Search & Category Filter */}
           <div className="bg-white p-5 rounded-3xl border border-[#E5DFD5] shadow-xs flex flex-col sm:flex-row gap-3">
             <div className="relative flex-1">
@@ -1200,7 +1296,7 @@ export const AdminPanel: React.FC<AdminPanelProps> = ({
               <table className="w-full text-left text-xs">
                 <thead className="bg-[#FAF9F6] text-[#2D2D2D] font-bold text-[10px] uppercase tracking-[0.2em] border-b border-[#E5DFD5]">
                   <tr>
-                    <th className="p-4">Item</th>
+                    <th className="p-4">Item / Foto</th>
                     <th className="p-4">Categoria</th>
                     <th className="p-4">Status</th>
                     <th className="p-4">Quem Escolheu</th>
@@ -1246,10 +1342,28 @@ export const AdminPanel: React.FC<AdminPanelProps> = ({
                     filteredGifts.map(gift => (
                       <tr key={gift.id} className="hover:bg-[#FAF9F6] transition">
                         <td className="p-4 font-semibold text-[#2D2D2D]">
-                          <div>{gift.name}</div>
-                          {gift.description && (
-                            <div className="text-[11px] text-[#2D2D2D]/60 font-normal">{gift.description}</div>
-                          )}
+                          <div className="flex items-center space-x-3">
+                            {gift.imageUrl ? (
+                              <img 
+                                src={gift.imageUrl} 
+                                alt={gift.name} 
+                                className="w-11 h-11 object-cover rounded-xl border border-[#E5DFD5] shrink-0 shadow-2xs" 
+                              />
+                            ) : (
+                              <div className="w-11 h-11 rounded-xl bg-[#FAF9F6] border border-[#E5DFD5] flex items-center justify-center shrink-0 text-[#C5A059] shadow-2xs">
+                                <GiftIcon className="w-5 h-5" />
+                              </div>
+                            )}
+                            <div className="min-w-0">
+                              <div className="font-bold text-xs sm:text-sm text-[#2D2D2D]">{gift.name}</div>
+                              {gift.description && (
+                                <div className="text-[11px] text-[#2D2D2D]/60 font-normal truncate max-w-xs">{gift.description}</div>
+                              )}
+                              {gift.priceRange && (
+                                <div className="text-[10px] text-[#C5A059] font-medium">{gift.priceRange}</div>
+                              )}
+                            </div>
+                          </div>
                         </td>
                         <td className="p-4">
                           <span className="px-3 py-1 rounded-full text-[10px] font-bold uppercase tracking-wider bg-[#FAF9F6] text-[#2D2D2D] border border-[#E5DFD5]">
@@ -1504,6 +1618,23 @@ export const AdminPanel: React.FC<AdminPanelProps> = ({
                 onChange={e => setEventForm({ ...eventForm, welcomeMessage: e.target.value })}
                 className="w-full px-4 py-2.5 text-sm border border-[#E5DFD5] bg-[#FAF9F6] rounded-2xl focus:border-[#C5A059] outline-none transition resize-none"
               />
+            </div>
+
+            <div>
+              <label className="block text-[10px] font-bold text-[#2D2D2D] uppercase tracking-[0.15em] mb-1.5 flex items-center justify-between">
+                <span>Dica Geral e Paleta de Cores dos Presentes (Texto Corrido)</span>
+                <span className="text-[#C5A059] font-normal normal-case text-[10px]">Exibido na Lista de Presentes</span>
+              </label>
+              <textarea 
+                rows={3}
+                placeholder="Ex: Oi queridos! Para ajudar na escolha pensamos em uma cozinha com itens verde e amarelo, no quarto marrom e azul, no banheiro branco, obrigada!"
+                value={eventForm.giftPreferencesGuide || ''}
+                onChange={e => setEventForm({ ...eventForm, giftPreferencesGuide: e.target.value })}
+                className="w-full px-4 py-2.5 text-sm border border-[#E5DFD5] bg-[#FAF9F6] rounded-2xl focus:border-[#C5A059] outline-none transition resize-none font-sans"
+              />
+              <p className="text-[10px] text-[#2D2D2D]/55 mt-1 font-sans">
+                Permite aos noivos indicar preferências gerais de estilo, paleta de cores ou cômodos sem precisar descrever presente por presente.
+              </p>
             </div>
 
             <div>
@@ -1883,6 +2014,23 @@ export const AdminPanel: React.FC<AdminPanelProps> = ({
                   onChange={e => setEventForm({ ...eventForm, welcomeMessage: e.target.value })}
                   className="w-full px-4 py-3 text-base sm:text-sm border border-[#E5DFD5] bg-[#FAF9F6] rounded-2xl focus:border-[#C5A059] focus:bg-white outline-none transition font-sans resize-none"
                 />
+              </div>
+
+              <div>
+                <label className="block text-[10px] sm:text-xs font-bold text-[#2D2D2D] uppercase tracking-[0.15em] mb-1.5 flex items-center justify-between">
+                  <span>Dica Geral e Paleta de Cores dos Presentes</span>
+                  <span className="text-[#C5A059] font-normal normal-case text-[10px]">Exibido na Lista de Presentes</span>
+                </label>
+                <textarea 
+                  rows={3}
+                  placeholder="Ex: Oi queridos! Para ajudar na escolha pensamos em uma cozinha com itens verde e amarelo, no quarto marrom e azul, no banheiro branco, obrigada!"
+                  value={eventForm.giftPreferencesGuide || ''}
+                  onChange={e => setEventForm({ ...eventForm, giftPreferencesGuide: e.target.value })}
+                  className="w-full px-4 py-3 text-base sm:text-sm border border-[#E5DFD5] bg-[#FAF9F6] rounded-2xl focus:border-[#C5A059] focus:bg-white outline-none transition font-sans resize-none"
+                />
+                <p className="text-[10px] text-[#2D2D2D]/55 mt-1 font-sans">
+                  Texto corrido para orientar os convidados sobre a paleta de cores e estilo da casa sem precisar descrever item por item.
+                </p>
               </div>
 
               <div className="pt-3 border-t border-[#E5DFD5] flex items-center justify-end space-x-3 pb-2">

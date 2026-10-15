@@ -27,6 +27,7 @@ export interface EventInfo {
   pixName: string;
   pixCity?: string;
   welcomeMessage?: string;
+  giftPreferencesGuide?: string;
   description?: string;
   coverImage?: string;
   adminPassword?: string;
