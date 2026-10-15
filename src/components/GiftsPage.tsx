@@ -382,16 +382,24 @@ export const GiftsPage: React.FC<GiftsPageProps> = ({
   // Active list items based on selected tab and filters
   const currentTabItems = activeTab === 'precisamos' ? neededGifts : acquiredGifts;
 
+  const normalizeCategory = (cat?: string): GiftCategory => {
+    if (cat && CATEGORIES.includes(cat as GiftCategory)) {
+      return cat as GiftCategory;
+    }
+    return 'Mimos e Outros';
+  };
+
   const filteredItems = currentTabItems.filter(g => {
+    const normalizedCat = normalizeCategory(g.category);
     // Category filter
-    if (selectedCategory !== 'all' && g.category !== selectedCategory) return false;
+    if (selectedCategory !== 'all' && normalizedCat !== selectedCategory) return false;
     
     // Search filter
     if (searchTerm.trim()) {
       const term = searchTerm.toLowerCase();
-      const matchName = g.name.toLowerCase().includes(term);
+      const matchName = (g.name || '').toLowerCase().includes(term);
       const matchDesc = g.description?.toLowerCase().includes(term);
-      const matchCategory = g.category.toLowerCase().includes(term);
+      const matchCategory = normalizedCat.toLowerCase().includes(term);
       return matchName || matchDesc || matchCategory;
     }
     return true;
@@ -455,10 +463,10 @@ export const GiftsPage: React.FC<GiftsPageProps> = ({
       <div className="bg-white border border-[#E5DFD5] rounded-xl p-3.5 shadow-2xs space-y-2">
         <div className="flex items-center justify-between text-xs">
           <div className="flex items-center space-x-2">
-            <span className="text-[11px] font-semibold text-[#2D2D2D]/80">Progresso dos Presentes</span>
+            <span className="text-[11px] font-semibold text-[#2D2D2D]/80">Resumo da Lista</span>
           </div>
           <span className="text-[11px] font-bold text-[#C5A059]">
-            {acquiredGifts.length} de {gifts.length} itens ({percentageCompleted}%)
+            {neededGifts.length} {neededGifts.length === 1 ? 'disponível' : 'disponíveis'} • {acquiredGifts.length} de {gifts.length} {gifts.length === 1 ? 'garantido' : 'garantidos'} ({percentageCompleted}%)
           </span>
         </div>
         <div className="w-full bg-[#FAF9F6] rounded-full h-2 overflow-hidden border border-[#E5DFD5]">
@@ -681,14 +689,18 @@ export const GiftsPage: React.FC<GiftsPageProps> = ({
               <h3 className="font-bold text-sm text-[#2D2D2D]">
                 {searchTerm || selectedCategory !== 'all'
                   ? 'Nenhum presente disponível encontrado com este filtro'
-                  : 'Todos os presentes já foram escolhidos! 🎉'}
+                  : gifts.length === 0
+                    ? 'A lista de presentes ainda está sendo preparada pelos noivos'
+                    : 'Todos os presentes já foram escolhidos! 🎉'}
               </h3>
               <p className="text-xs text-[#2D2D2D]/60 max-w-sm mx-auto">
                 {searchTerm || selectedCategory !== 'all'
                   ? 'Tente buscar por outro termo ou limpar o filtro de categoria.'
-                  : 'Todos os itens necessários foram garantidos pelos convidados! Você também pode sugerir um presente especial.'}
+                  : gifts.length === 0
+                    ? 'Em breve novos itens estarão disponíveis aqui. Você também pode sugerir um presente especial clicando no botão acima!'
+                    : 'Todos os itens necessários foram garantidos pelos convidados! Você também pode sugerir um presente especial.'}
               </p>
-              {searchTerm && (
+              {(searchTerm || selectedCategory !== 'all') && (
                 <button
                   onClick={() => {
                     setSearchTerm('');
@@ -696,13 +708,13 @@ export const GiftsPage: React.FC<GiftsPageProps> = ({
                   }}
                   className="mt-2 text-xs font-bold text-[#C5A059] hover:underline"
                 >
-                  Limpar Busca
+                  Limpar Filtro
                 </button>
               )}
             </div>
           ) : (
             CATEGORIES.map(category => {
-              const categoryGifts = filteredItems.filter(g => g.category === category);
+              const categoryGifts = filteredItems.filter(g => normalizeCategory(g.category) === category);
               if (categoryGifts.length === 0) return null;
 
               return (
@@ -883,7 +895,7 @@ export const GiftsPage: React.FC<GiftsPageProps> = ({
             </div>
           ) : (
             CATEGORIES.map(category => {
-              const categoryGifts = filteredItems.filter(g => g.category === category);
+              const categoryGifts = filteredItems.filter(g => normalizeCategory(g.category) === category);
               if (categoryGifts.length === 0) return null;
 
               return (

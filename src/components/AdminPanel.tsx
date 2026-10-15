@@ -18,6 +18,7 @@ interface AdminPanelProps {
   gifts: Gift[];
   guests: Guest[];
   onUpdateEventInfo: (info: Partial<EventInfo>) => Promise<void>;
+  onLoadCouple?: (coupleId: string) => Promise<void>;
   onSaveGuest: (guestData: Omit<Guest, 'id' | 'updatedAt'> & { id?: string }) => Promise<void>;
   onDeleteGuest: (id: string) => Promise<void>;
   onSaveGift: (giftData: Omit<Gift, 'id'> & { id?: string }) => Promise<void>;
@@ -43,6 +44,7 @@ export const AdminPanel: React.FC<AdminPanelProps> = ({
   gifts,
   guests,
   onUpdateEventInfo,
+  onLoadCouple,
   onSaveGuest,
   onDeleteGuest,
   onSaveGift,
@@ -57,7 +59,7 @@ export const AdminPanel: React.FC<AdminPanelProps> = ({
   const [isAuthenticated, setIsAuthenticated] = useState(() => {
     try {
       if (sessionStorage.getItem('cha_couple_authenticated') === 'true') return true;
-      if (auth.currentUser && !auth.currentUser.isAnonymous && !!auth.currentUser.email) return true;
+      if (sessionStorage.getItem('cha_superadmin_authenticated') === 'true') return true;
     } catch {
       return false;
     }
@@ -66,13 +68,12 @@ export const AdminPanel: React.FC<AdminPanelProps> = ({
   const [passwordInput, setPasswordInput] = useState('');
   const [authError, setAuthError] = useState('');
 
-  // Auto-authenticate Admin Panel when Firebase user is logged in
+  // Auto-authenticate Admin Panel when Firebase user is explicitly logged in as couple or superadmin
   useEffect(() => {
     const unsubscribe = subscribeToAuthChanges((user) => {
       if (user && !user.isAnonymous && user.email) {
-        if (sessionStorage.getItem('cha_couple_authenticated') === 'true' || window.location.pathname.includes('/noiva')) {
+        if (sessionStorage.getItem('cha_couple_authenticated') === 'true' || sessionStorage.getItem('cha_superadmin_authenticated') === 'true') {
           setIsAuthenticated(true);
-          sessionStorage.setItem('cha_couple_authenticated', 'true');
           setAdminEmail(user.email);
         }
       }
@@ -178,11 +179,14 @@ export const AdminPanel: React.FC<AdminPanelProps> = ({
     setAdminLoadingAuth(true);
 
     try {
+      sessionStorage.setItem('cha_couple_authenticated', 'true');
       const user = await authenticateBrideAdminWithFirebase(adminEmail.trim(), adminPassword.trim(), adminAuthMode);
       
       const existingCouple = await getCoupleFromFirestore(user.uid);
       if (existingCouple && existingCouple.eventInfo) {
-        await onUpdateEventInfo(existingCouple.eventInfo);
+        if (onLoadCouple) {
+          await onLoadCouple(existingCouple.id || user.uid);
+        }
       } else {
         const brideDefault = user.displayName?.split(' ')[0] || adminEmail.trim().split('@')[0] || '';
         const newEventInfo: EventInfo = {
@@ -202,13 +206,16 @@ export const AdminPanel: React.FC<AdminPanelProps> = ({
         const newGuests: Guest[] = [];
 
         await saveCoupleToFirestore(user.uid, newEventInfo, newGifts, newGuests);
-        await onUpdateEventInfo(newEventInfo);
+        if (onLoadCouple) {
+          await onLoadCouple(user.uid);
+        }
       }
 
       sessionStorage.setItem('cha_couple_authenticated', 'true');
       setIsAuthenticated(true);
       setAuthError('');
     } catch (err: any) {
+      sessionStorage.removeItem('cha_couple_authenticated');
       console.error('Admin Auth Error:', err);
       setAuthError(err.message || 'Erro ao realizar login. Verifique seus dados.');
     } finally {
@@ -220,12 +227,15 @@ export const AdminPanel: React.FC<AdminPanelProps> = ({
     setAuthError('');
     setAdminLoadingAuth(true);
     try {
+      sessionStorage.setItem('cha_couple_authenticated', 'true');
       const user = await loginWithGoogle();
       await saveAdminToFirestore(user, 'bride_admin');
       
       const existingCouple = await getCoupleFromFirestore(user.uid);
       if (existingCouple && existingCouple.eventInfo) {
-        await onUpdateEventInfo(existingCouple.eventInfo);
+        if (onLoadCouple) {
+          await onLoadCouple(existingCouple.id || user.uid);
+        }
       } else {
         const brideDefault = user.displayName?.split(' ')[0] || user.email?.split('@')[0] || '';
         const newEventInfo: EventInfo = {
@@ -245,12 +255,15 @@ export const AdminPanel: React.FC<AdminPanelProps> = ({
         const newGuests: Guest[] = [];
 
         await saveCoupleToFirestore(user.uid, newEventInfo, newGifts, newGuests);
-        await onUpdateEventInfo(newEventInfo);
+        if (onLoadCouple) {
+          await onLoadCouple(user.uid);
+        }
       }
 
       sessionStorage.setItem('cha_couple_authenticated', 'true');
       setIsAuthenticated(true);
     } catch (err: any) {
+      sessionStorage.removeItem('cha_couple_authenticated');
       console.error('Google Admin Auth Error:', err);
       if (err.code === 'auth/popup-closed-by-user') {
         setAuthError('Login com Google cancelado.');
@@ -1833,6 +1846,17 @@ export const AdminPanel: React.FC<AdminPanelProps> = ({
           setSelectedGiftForEdit(null);
         }}
         onSave={onSaveGift}
+      />
+
+      {/* Gift Catalog Modal */}
+      <GiftCatalogModal
+        isOpen={isCatalogModalOpen}
+        onClose={() => setIsCatalogModalOpen(false)}
+        currentGifts={gifts}
+        onSaveGift={onSaveGift}
+        onDeleteGift={onDeleteGift}
+        onImportAllTemplateGifts={onImportTemplateGifts}
+        onClearGifts={onClearGifts}
       />
 
       {/* Couple Drawer (Painel de Dados dos Noivos para Mobile e Desktop) */}

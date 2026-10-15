@@ -24,6 +24,7 @@ import {
   loadAllFromFirestore,
   syncAllToFirestore,
   getAllCouplesFromFirestore,
+  subscribeToAllCouplesRealtime,
   auth
 } from './lib/firebase';
 
@@ -135,46 +136,22 @@ export default function App() {
         const isCoupleAuth = sessionStorage.getItem('cha_couple_authenticated') === 'true';
         if (isCoupleAuth) {
           try {
-            const coupleRecord = await getCoupleFromFirestore(firebaseUser.uid);
+            const couplesList = await getAllCouplesFromFirestore();
+            setRegisteredCouples(couplesList);
+            const matchedFromList = couplesList.find(
+              c => c.id === firebaseUser.uid || c.aliasIds?.includes(firebaseUser.uid)
+            );
+            const coupleRecord = matchedFromList || (await getCoupleFromFirestore(firebaseUser.uid));
+
             if (coupleRecord && coupleRecord.eventInfo) {
+              const resolvedId = coupleRecord.id || firebaseUser.uid;
               setData({
                 eventInfo: coupleRecord.eventInfo,
                 gifts: coupleRecord.gifts || [],
                 guests: coupleRecord.guests || []
               });
-              setSelectedCoupleId(firebaseUser.uid);
-              localStorage.setItem('cha_selected_couple_id', firebaseUser.uid);
-            } else {
-              // New couple profile initialization with clean empty fields
-              const brideDefault = firebaseUser.displayName?.split(' ')[0] || firebaseUser.email?.split('@')[0] || '';
-              const newEventInfo: EventInfo = {
-                id: firebaseUser.uid,
-                brideName: brideDefault,
-                groomName: '',
-                eventTitle: brideDefault ? `Chá de Panela de ${brideDefault}` : '',
-                date: '',
-                time: '',
-                location: '',
-                description: '',
-                coverImage: '',
-                pixKey: '',
-                pixName: firebaseUser.displayName || ''
-              };
-              const newGifts: Gift[] = [];
-              const newGuests: Guest[] = [];
-
-              await saveCoupleToFirestore(firebaseUser.uid, newEventInfo, newGifts, newGuests);
-              
-              setData({
-                eventInfo: newEventInfo,
-                gifts: newGifts,
-                guests: newGuests
-              });
-              setSelectedCoupleId(firebaseUser.uid);
-              localStorage.setItem('cha_selected_couple_id', firebaseUser.uid);
-
-              const updatedCouples = await getAllCouplesFromFirestore();
-              setRegisteredCouples(updatedCouples);
+              setSelectedCoupleId(resolvedId);
+              localStorage.setItem('cha_selected_couple_id', resolvedId);
             }
           } catch (err) {
             console.warn('Could not load couple record from Firestore:', err);
@@ -185,13 +162,35 @@ export default function App() {
     return () => unsubscribe();
   }, []);
 
+  // Real-time synchronization for all couples (keeps LandingPage & merged profiles live)
+  useEffect(() => {
+    const unsubAll = subscribeToAllCouplesRealtime((couplesList) => {
+      setRegisteredCouples(couplesList);
+      const urlParams = new URLSearchParams(window.location.search);
+      const urlCoupleId = urlParams.get('casal') || urlParams.get('couple') || urlParams.get('c');
+      const activeId = urlCoupleId || selectedCoupleId;
+      if (activeId) {
+        const matched = couplesList.find(c => c.id === activeId || c.aliasIds?.includes(activeId));
+        if (matched && matched.eventInfo) {
+          setData(prev => ({
+            ...prev,
+            eventInfo: matched.eventInfo || prev.eventInfo,
+            gifts: matched.gifts || prev.gifts,
+            guests: matched.guests || prev.guests
+          }));
+        }
+      }
+    });
+    return () => unsubAll();
+  }, [selectedCoupleId]);
+
   // Real-time synchronization: listen for live changes to the current couple's gifts
   useEffect(() => {
     const activeId = selectedCoupleId || (data.eventInfo && data.eventInfo.id !== 'main' ? data.eventInfo.id : null);
     if (!activeId) return;
 
     const unsub = subscribeToCoupleRealtime(activeId, (coupleRecord) => {
-      if (coupleRecord) {
+      if (coupleRecord && coupleRecord.eventInfo) {
         setData(prev => ({
           ...prev,
           eventInfo: coupleRecord.eventInfo || prev.eventInfo,
@@ -254,6 +253,30 @@ export default function App() {
     showToast('Você saiu da sua conta de convidado.');
   };
 
+  // Load a specific couple profile by ID (or alias ID)
+  const handleLoadCouple = async (coupleId: string) => {
+    try {
+      const couplesList = await getAllCouplesFromFirestore();
+      setRegisteredCouples(couplesList);
+      const found =
+        couplesList.find(c => c.id === coupleId || c.aliasIds?.includes(coupleId)) ||
+        (await getCoupleFromFirestore(coupleId));
+
+      if (found && found.eventInfo) {
+        const resolvedId = found.id || coupleId;
+        setData({
+          eventInfo: found.eventInfo,
+          gifts: found.gifts || [],
+          guests: found.guests || []
+        });
+        setSelectedCoupleId(resolvedId);
+        localStorage.setItem('cha_selected_couple_id', resolvedId);
+      }
+    } catch (err) {
+      console.warn('Error loading couple:', err);
+    }
+  };
+
   // Fetch data from server & Firestore
   const fetchData = async () => {
     try {
@@ -261,80 +284,71 @@ export default function App() {
       const couplesList = await getAllCouplesFromFirestore();
       setRegisteredCouples(couplesList);
 
-      // If an authenticated couple exists, load their specific document
-      const isCouple = auth.currentUser && (sessionStorage.getItem('cha_couple_authenticated') === 'true' || currentRoute === 'noiva');
+      const urlParams = new URLSearchParams(window.location.search);
+      const urlCoupleId = urlParams.get('casal') || urlParams.get('couple') || urlParams.get('c');
+
+      // If an authenticated couple admin is on the admin panel without an explicit guest URL override
+      const isCouple =
+        auth.currentUser &&
+        !auth.currentUser.isAnonymous &&
+        sessionStorage.getItem('cha_couple_authenticated') === 'true' &&
+        !urlCoupleId;
+
       if (isCouple && auth.currentUser) {
-        const coupleRecord = await getCoupleFromFirestore(auth.currentUser.uid);
+        const matchedFromList = couplesList.find(
+          c => c.id === auth.currentUser!.uid || c.aliasIds?.includes(auth.currentUser!.uid)
+        );
+        const coupleRecord = matchedFromList || (await getCoupleFromFirestore(auth.currentUser.uid));
         if (coupleRecord && coupleRecord.eventInfo) {
+          const resolvedId = coupleRecord.id || auth.currentUser.uid;
           setData({
             eventInfo: coupleRecord.eventInfo,
             gifts: coupleRecord.gifts || [],
             guests: coupleRecord.guests || []
           });
-          setSelectedCoupleId(auth.currentUser.uid);
+          setSelectedCoupleId(resolvedId);
+          localStorage.setItem('cha_selected_couple_id', resolvedId);
           setLoading(false);
-          return;
-        } else {
-          // Initialize fresh couple profile for auth.currentUser.uid with clean empty fields
-          const brideDefault = auth.currentUser.displayName?.split(' ')[0] || auth.currentUser.email?.split('@')[0] || '';
-          const newEventInfo: EventInfo = {
-            id: auth.currentUser.uid,
-            brideName: brideDefault,
-            groomName: '',
-            eventTitle: brideDefault ? `Chá de Panela de ${brideDefault}` : '',
-            date: '',
-            time: '',
-            location: '',
-            description: '',
-            coverImage: '',
-            pixKey: '',
-            pixName: auth.currentUser.displayName || ''
-          };
-          const newGifts: Gift[] = [];
-          const newGuests: Guest[] = [];
-
-          await saveCoupleToFirestore(auth.currentUser.uid, newEventInfo, newGifts, newGuests);
-          
-          setData({
-            eventInfo: newEventInfo,
-            gifts: newGifts,
-            guests: newGuests
-          });
-          setSelectedCoupleId(auth.currentUser.uid);
-          setLoading(false);
-
-          const updatedCouples = await getAllCouplesFromFirestore();
-          setRegisteredCouples(updatedCouples);
           return;
         }
       }
 
       // If a specific couple is requested via URL parameter or selection
-      const urlParams = new URLSearchParams(window.location.search);
-      const urlCoupleId = urlParams.get('casal') || urlParams.get('couple') || urlParams.get('c');
-      const targetCoupleId = urlCoupleId || selectedCoupleId || (typeof window !== 'undefined' ? localStorage.getItem('cha_selected_couple_id') : null);
+      const targetCoupleId =
+        urlCoupleId ||
+        selectedCoupleId ||
+        (typeof window !== 'undefined' ? localStorage.getItem('cha_selected_couple_id') : null);
 
       if (targetCoupleId) {
-        let found = couplesList.find(c => c.id === targetCoupleId);
+        let found = couplesList.find(c => c.id === targetCoupleId || c.aliasIds?.includes(targetCoupleId));
         if (!found) {
           try {
             const directRecord = await getCoupleFromFirestore(targetCoupleId);
             if (directRecord && directRecord.eventInfo) {
-              found = directRecord;
+              // Check if there is a merged couple with the same bride & groom names
+              const b = (directRecord.eventInfo.brideName || '').trim().toLowerCase();
+              const g = (directRecord.eventInfo.groomName || '').trim().toLowerCase();
+              const byNames = b ? couplesList.find(
+                c =>
+                  (c.eventInfo?.brideName || '').trim().toLowerCase() === b &&
+                  (c.eventInfo?.groomName || '').trim().toLowerCase() === g
+              ) : undefined;
+              found = byNames || directRecord;
             }
           } catch (e) {
             console.warn('Could not load target couple directly from Firestore:', e);
           }
         }
 
-        if (found) {
+        if (found && found.eventInfo) {
+          const resolvedId = found.id || targetCoupleId;
           setData({
             eventInfo: found.eventInfo,
             gifts: found.gifts || [],
             guests: found.guests || []
           });
-          setSelectedCoupleId(targetCoupleId);
-          localStorage.setItem('cha_selected_couple_id', targetCoupleId);
+          setSelectedCoupleId(resolvedId);
+          localStorage.setItem('cha_selected_couple_id', resolvedId);
           setLoading(false);
           return;
         }
@@ -626,24 +640,60 @@ export default function App() {
   };
 
   const handleClearGuests = async () => {
-    const res = await fetch('/api/clear-guests', { method: 'POST' });
-    if (!res.ok) throw new Error('Erro ao zerar convidados');
-    await fetchData();
+    const activeCoupleId = auth.currentUser?.uid || selectedCoupleId || (data.eventInfo && data.eventInfo.id !== 'main' ? data.eventInfo.id : null);
+    setData(prev => ({ ...prev, guests: [] }));
+    if (activeCoupleId) {
+      await saveCoupleToFirestore(activeCoupleId, data.eventInfo, data.gifts, []);
+    }
+    try {
+      await fetch('/api/clear-guests', { method: 'POST' });
+    } catch (e) {
+      console.warn(e);
+    }
     showToast('Lista de convidados zerada!');
   };
 
   const handleClearGifts = async () => {
-    const res = await fetch('/api/clear-gifts', { method: 'POST' });
-    if (!res.ok) throw new Error('Erro ao zerar lista de presentes');
-    await fetchData();
+    const activeCoupleId = auth.currentUser?.uid || selectedCoupleId || (data.eventInfo && data.eventInfo.id !== 'main' ? data.eventInfo.id : null);
+    setData(prev => ({ ...prev, gifts: [] }));
+    if (activeCoupleId) {
+      await saveCoupleToFirestore(activeCoupleId, data.eventInfo, [], data.guests);
+    }
+    try {
+      await fetch('/api/clear-gifts', { method: 'POST' });
+    } catch (e) {
+      console.warn(e);
+    }
     showToast('Lista de presentes zerada com sucesso!');
   };
 
   const handleImportTemplateGifts = async () => {
-    const res = await fetch('/api/import-template-gifts', { method: 'POST' });
-    if (!res.ok) throw new Error('Erro ao importar sugestões');
-    await fetchData();
-    showToast('20 sugestões de presentes carregadas com sucesso!');
+    const activeCoupleId = auth.currentUser?.uid || selectedCoupleId || (data.eventInfo && data.eventInfo.id !== 'main' ? data.eventInfo.id : null);
+    const templateGifts = initialData.gifts.map((g, idx) => ({
+      ...g,
+      id: `gift_tpl_${Date.now()}_${idx}`,
+      isClaimed: false,
+      claimedByGuestName: undefined,
+      claimedByGuestEmail: undefined,
+      claimedByGuestPhone: undefined,
+      claimedAt: undefined
+    }));
+    const mergedGifts = [...data.gifts];
+    for (const tg of templateGifts) {
+      if (!mergedGifts.some(existing => existing.name.trim().toLowerCase() === tg.name.trim().toLowerCase())) {
+        mergedGifts.push(tg);
+      }
+    }
+    setData(prev => ({ ...prev, gifts: mergedGifts }));
+    if (activeCoupleId) {
+      await saveCoupleToFirestore(activeCoupleId, data.eventInfo, mergedGifts, data.guests);
+    }
+    try {
+      await fetch('/api/import-template-gifts', { method: 'POST' });
+    } catch (e) {
+      console.warn(e);
+    }
+    showToast('Sugestões de presentes carregadas com sucesso!');
   };
 
   const handleSaveGuest = async (guestData: Omit<Guest, 'id' | 'updatedAt'> & { id?: string }) => {
@@ -1021,6 +1071,7 @@ export default function App() {
               gifts={data.gifts}
               guests={data.guests}
               onUpdateEventInfo={handleUpdateEventInfo}
+              onLoadCouple={handleLoadCouple}
               onSaveGuest={handleSaveGuest}
               onDeleteGuest={handleDeleteGuest}
               onSaveGift={handleSaveGift}

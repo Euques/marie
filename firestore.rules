@@ -17,6 +17,9 @@ service cloud.firestore {
     match /admins/{document=**} {
       allow read, write: if true;
     }
+    match /users/{document=**} {
+      allow read, write: if true;
+    }
     match /test/{document=**} {
       allow read, write: if true;
     }

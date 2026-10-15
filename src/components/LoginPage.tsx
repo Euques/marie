@@ -47,6 +47,7 @@ export const LoginPage: React.FC<LoginPageProps> = ({
     setAuthError('');
     setLoadingAuth(true);
     try {
+      sessionStorage.removeItem('cha_couple_authenticated');
       const firebaseUser = await loginWithGoogle();
       const userEmail = firebaseUser.email || '';
       const displayName = firebaseUser.displayName || userEmail.split('@')[0] || 'Convidado';
@@ -76,6 +77,7 @@ export const LoginPage: React.FC<LoginPageProps> = ({
     setAuthError('');
     setLoadingAuth(true);
     try {
+      sessionStorage.setItem('cha_couple_authenticated', 'true');
       const firebaseUser = await loginWithGoogle();
       const userEmail = firebaseUser.email || '';
 
@@ -87,6 +89,7 @@ export const LoginPage: React.FC<LoginPageProps> = ({
         onNavigate('noiva');
       }
     } catch (err: any) {
+      sessionStorage.removeItem('cha_couple_authenticated');
       console.warn('Google Popup Error:', err);
       if (err.code === 'auth/popup-closed-by-user') {
         setAuthError('Autenticação com Google cancelada.');
@@ -114,6 +117,7 @@ export const LoginPage: React.FC<LoginPageProps> = ({
     setLoadingAuth(true);
 
     try {
+      sessionStorage.removeItem('cha_couple_authenticated');
       const nameToUse = guestName.trim() || emailInput.split('@')[0];
       const user = await loginOrRegisterWithEmail(nameToUse, emailInput.trim(), passwordInput.trim());
       const displayName = user.displayName || nameToUse || 'Convidado';

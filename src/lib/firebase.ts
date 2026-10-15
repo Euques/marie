@@ -367,9 +367,125 @@ export async function saveAdminToFirestore(user: FirebaseUser, role: string = 'b
   }
 }
 
+// Helper to merge gifts from two documents of the same couple without losing items or claims
+function mergeCoupleGifts(primaryGifts: Gift[] = [], secondaryGifts: Gift[] = []): Gift[] {
+  const map = new Map<string, Gift>();
+  for (const g of secondaryGifts) {
+    if (!g || !g.id) continue;
+    map.set(g.id, g);
+  }
+  for (const g of primaryGifts) {
+    if (!g || !g.id) continue;
+    const prev = map.get(g.id);
+    if (!prev) {
+      map.set(g.id, g);
+    } else {
+      map.set(g.id, {
+        ...prev,
+        ...g,
+        imageUrl: g.imageUrl || prev.imageUrl || '',
+        description: g.description || prev.description || '',
+        priceRange: g.priceRange || prev.priceRange || '',
+        suggestedUrl: g.suggestedUrl || prev.suggestedUrl || '',
+      });
+    }
+  }
+  return Array.from(map.values());
+}
+
+function mergeCoupleGuests(primaryGuests: Guest[] = [], secondaryGuests: Guest[] = []): Guest[] {
+  const map = new Map<string, Guest>();
+  for (const g of secondaryGuests) {
+    if (!g || !g.id) continue;
+    map.set(g.id, g);
+  }
+  for (const g of primaryGuests) {
+    if (!g || !g.id) continue;
+    map.set(g.id, { ...(map.get(g.id) || {}), ...g });
+  }
+  return Array.from(map.values());
+}
+
+export function deduplicateAndMergeCouples(rawCouples: any[]): any[] {
+  if (!rawCouples || rawCouples.length === 0) return [];
+
+  // Filter out invalid/ghost documents created from guest logins (no groomName AND 0 gifts AND 0 guests)
+  const validCouples = rawCouples.filter(c => {
+    const bride = (c.eventInfo?.brideName || '').trim();
+    const groom = (c.eventInfo?.groomName || '').trim();
+    const giftsCount = Array.isArray(c.gifts) ? c.gifts.length : 0;
+    const guestsCount = Array.isArray(c.guests) ? c.guests.length : 0;
+    return (bride.length > 0 && groom.length > 0) || giftsCount > 0 || guestsCount > 0;
+  });
+
+  const nonDefault = validCouples.filter(c => c.id !== 'default');
+  const sourceList = nonDefault.length > 0 ? nonDefault : validCouples;
+
+  const uniqueMap = new Map<string, any>();
+
+  for (const item of sourceList) {
+    const bride = (item.eventInfo?.brideName || '').trim().toLowerCase();
+    const groom = (item.eventInfo?.groomName || '').trim().toLowerCase();
+    const nameKey = (bride && groom) ? `${bride}_${groom}` : item.id;
+
+    if (!uniqueMap.has(nameKey)) {
+      uniqueMap.set(nameKey, {
+        ...item,
+        aliasIds: [item.id]
+      });
+    } else {
+      const existing = uniqueMap.get(nameKey);
+      const aliasIds = Array.from(new Set([...(existing.aliasIds || [existing.id]), item.id]));
+
+      const itemGiftsLen = Array.isArray(item.gifts) ? item.gifts.length : 0;
+      const existingGiftsLen = Array.isArray(existing.gifts) ? existing.gifts.length : 0;
+      const itemTime = new Date(item.updatedAt || 0).getTime();
+      const existingTime = new Date(existing.updatedAt || 0).getTime();
+
+      // Decide which document is the primary record (prefer real UID over 'default', then more gifts, then newer timestamp)
+      let itemIsPrimary = false;
+      if (existing.id === 'default' && item.id !== 'default') {
+        itemIsPrimary = true;
+      } else if (item.canonicalCoupleId && item.canonicalCoupleId === existing.id) {
+        itemIsPrimary = false;
+      } else if (existing.canonicalCoupleId && existing.canonicalCoupleId === item.id) {
+        itemIsPrimary = true;
+      } else if (itemGiftsLen > existingGiftsLen) {
+        itemIsPrimary = true;
+      } else if (itemGiftsLen === existingGiftsLen && itemTime > existingTime) {
+        itemIsPrimary = true;
+      }
+
+      const primary = itemIsPrimary ? item : existing;
+      const secondary = itemIsPrimary ? existing : item;
+
+      const mergedGifts = mergeCoupleGifts(primary.gifts || [], secondary.gifts || []);
+      const mergedGuests = mergeCoupleGuests(primary.guests || [], secondary.guests || []);
+
+      uniqueMap.set(nameKey, {
+        ...secondary,
+        ...primary,
+        id: primary.id,
+        aliasIds,
+        eventInfo: {
+          ...(secondary.eventInfo || {}),
+          ...(primary.eventInfo || {}),
+          id: primary.id
+        },
+        gifts: mergedGifts,
+        guests: mergedGuests
+      });
+    }
+  }
+
+  return Array.from(uniqueMap.values());
+}
+
 export async function saveCoupleToFirestore(uid: string, eventInfo: any, gifts?: any[], guests?: any[]) {
+  if (!uid || uid === 'undefined' || uid === 'null') return;
   try {
     await ensureAuth();
+    const now = new Date().toISOString();
     const coupleRef = doc(db, 'couples', uid);
 
     const docData = cleanForFirestore({
@@ -378,9 +494,37 @@ export async function saveCoupleToFirestore(uid: string, eventInfo: any, gifts?:
       eventInfo: { ...eventInfo, id: uid },
       gifts: gifts || [],
       guests: guests || [],
-      updatedAt: new Date().toISOString()
+      updatedAt: now
     });
     await setDoc(coupleRef, docData, { merge: true });
+
+    // Also synchronize any twin documents in 'couples' that belong to the same bride & groom
+    const bride = (eventInfo?.brideName || '').trim().toLowerCase();
+    const groom = (eventInfo?.groomName || '').trim().toLowerCase();
+    if (bride && groom) {
+      const snap = await getDocs(collection(db, 'couples'));
+      const syncPromises: Promise<any>[] = [];
+      snap.forEach((d) => {
+        if (d.id !== uid) {
+          const data = d.data();
+          const dBride = (data.eventInfo?.brideName || '').trim().toLowerCase();
+          const dGroom = (data.eventInfo?.groomName || '').trim().toLowerCase();
+          if (dBride === bride && dGroom === groom) {
+            syncPromises.push(
+              setDoc(doc(db, 'couples', d.id), cleanForFirestore({
+                eventInfo: { ...eventInfo, id: d.id },
+                gifts: gifts || [],
+                guests: guests || [],
+                updatedAt: now
+              }), { merge: true })
+            );
+          }
+        }
+      });
+      if (syncPromises.length > 0) {
+        await Promise.all(syncPromises);
+      }
+    }
   } catch (e) {
     handleFirestoreError(e, OperationType.WRITE, `couples/${uid}`);
   }
@@ -391,7 +535,23 @@ export async function getCoupleFromFirestore(uid: string) {
     const coupleRef = doc(db, 'couples', uid);
     const docSnap = await getDoc(coupleRef);
     if (docSnap.exists()) {
-      return docSnap.data();
+      const data = docSnap.data();
+      const bride = (data.eventInfo?.brideName || '').trim().toLowerCase();
+      const groom = (data.eventInfo?.groomName || '').trim().toLowerCase();
+      if (bride && groom) {
+        // Check if there is a twin document with more gifts/guests and merge
+        const allCouples = await getAllCouplesFromFirestore();
+        const matched = allCouples.find(c =>
+          c.id === uid ||
+          (Array.isArray(c.aliasIds) && c.aliasIds.includes(uid)) ||
+          ((c.eventInfo?.brideName || '').trim().toLowerCase() === bride &&
+           (c.eventInfo?.groomName || '').trim().toLowerCase() === groom)
+        );
+        if (matched) {
+          return matched;
+        }
+      }
+      return data;
     }
     return null;
   } catch (e) {
@@ -404,11 +564,44 @@ export async function updateCoupleGiftsInFirestore(coupleId: string, gifts: Gift
   if (!coupleId || coupleId === 'undefined' || coupleId === 'null') return;
   try {
     await ensureAuth();
+    const now = new Date().toISOString();
+    const cleanedGifts = cleanForFirestore(gifts);
     const coupleRef = doc(db, 'couples', coupleId);
+    const targetSnap = await getDoc(coupleRef);
+
     await setDoc(coupleRef, {
-      gifts: cleanForFirestore(gifts),
-      updatedAt: new Date().toISOString()
+      gifts: cleanedGifts,
+      updatedAt: now
     }, { merge: true });
+
+    // Also synchronize any twin documents in 'couples' that belong to the same bride & groom
+    if (targetSnap.exists()) {
+      const targetData = targetSnap.data();
+      const bride = (targetData.eventInfo?.brideName || '').trim().toLowerCase();
+      const groom = (targetData.eventInfo?.groomName || '').trim().toLowerCase();
+      if (bride && groom) {
+        const snap = await getDocs(collection(db, 'couples'));
+        const syncPromises: Promise<any>[] = [];
+        snap.forEach((d) => {
+          if (d.id !== coupleId) {
+            const data = d.data();
+            const dBride = (data.eventInfo?.brideName || '').trim().toLowerCase();
+            const dGroom = (data.eventInfo?.groomName || '').trim().toLowerCase();
+            if (dBride === bride && dGroom === groom) {
+              syncPromises.push(
+                setDoc(doc(db, 'couples', d.id), {
+                  gifts: cleanedGifts,
+                  updatedAt: now
+                }, { merge: true })
+              );
+            }
+          }
+        });
+        if (syncPromises.length > 0) {
+          await Promise.all(syncPromises);
+        }
+      }
+    }
   } catch (e) {
     handleFirestoreError(e, OperationType.WRITE, `couples/${coupleId}`);
   }
@@ -431,6 +624,25 @@ export function subscribeToCoupleRealtime(coupleId: string, callback: (coupleDat
   }
 }
 
+export function subscribeToAllCouplesRealtime(callback: (couples: any[]) => void) {
+  try {
+    const couplesCol = collection(db, 'couples');
+    return onSnapshot(couplesCol, (querySnapshot) => {
+      const rawCouples: any[] = [];
+      querySnapshot.forEach((docSnap) => {
+        rawCouples.push({ id: docSnap.id, ...docSnap.data() });
+      });
+      const deduplicated = deduplicateAndMergeCouples(rawCouples);
+      callback(deduplicated);
+    }, (error) => {
+      console.warn('Realtime all-couples snapshot notice:', error);
+    });
+  } catch (err) {
+    console.warn('Realtime all-couples subscription error:', err);
+    return () => {};
+  }
+}
+
 export async function getAllCouplesFromFirestore(): Promise<any[]> {
   try {
     await ensureAuth();
@@ -441,49 +653,7 @@ export async function getAllCouplesFromFirestore(): Promise<any[]> {
       rawCouples.push({ id: docSnap.id, ...docSnap.data() });
     });
 
-    if (rawCouples.length === 0) return [];
-
-    // Filter out invalid/ghost couple documents that have no bride or groom name or title
-    const validCouples = rawCouples.filter(c => {
-      const bride = (c.eventInfo?.brideName || '').trim();
-      const groom = (c.eventInfo?.groomName || '').trim();
-      const title = (c.eventInfo?.eventTitle || '').trim();
-      // Exclude placeholder documents with empty bride and groom
-      const hasIdentifiableNames = bride.length > 0 || groom.length > 0 || title.length > 3;
-      return hasIdentifiableNames;
-    });
-
-    // Filter out 'default' document if non-default couple profiles exist
-    const nonDefault = validCouples.filter(c => c.id !== 'default');
-    const sourceList = nonDefault.length > 0 ? nonDefault : validCouples;
-
-    // Deduplicate by Bride & Groom Name or ID
-    const uniqueMap = new Map<string, any>();
-
-    for (const item of sourceList) {
-      const bride = (item.eventInfo?.brideName || '').trim().toLowerCase();
-      const groom = (item.eventInfo?.groomName || '').trim().toLowerCase();
-      const title = (item.eventInfo?.eventTitle || '').trim().toLowerCase();
-      
-      // Key by names if available, otherwise by doc ID
-      const nameKey = (bride || groom) ? `${bride}_${groom}_${title}` : item.id;
-
-      if (!uniqueMap.has(nameKey)) {
-        uniqueMap.set(nameKey, item);
-      } else {
-        const existing = uniqueMap.get(nameKey);
-        // Prefer real UID over default or keep the one with more gifts / guests / recent update
-        if (existing.id === 'default' && item.id !== 'default') {
-          uniqueMap.set(nameKey, item);
-        } else if ((item.gifts?.length || 0) > (existing.gifts?.length || 0)) {
-          uniqueMap.set(nameKey, item);
-        } else if (new Date(item.updatedAt || 0) > new Date(existing.updatedAt || 0)) {
-          uniqueMap.set(nameKey, item);
-        }
-      }
-    }
-
-    return Array.from(uniqueMap.values());
+    return deduplicateAndMergeCouples(rawCouples);
   } catch (e) {
     handleFirestoreError(e, OperationType.LIST, 'couples');
     return [];

@@ -38,6 +38,7 @@ export interface EventInfo {
 
 export interface CoupleProfile {
   id: string;
+  aliasIds?: string[];
   eventInfo: EventInfo;
   gifts: Gift[];
   guests: Guest[];
