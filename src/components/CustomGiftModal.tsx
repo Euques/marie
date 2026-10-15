@@ -1,6 +1,7 @@
 import React, { useState, useRef, useEffect } from 'react';
 import { GiftCategory } from '../types';
-import { Gift, X, Plus, Sparkles, Upload, Image as ImageIcon, Trash2, Loader2 } from 'lucide-react';
+import { uploadPhotoToStorage } from '../lib/firebase';
+import { X, Plus, Sparkles, Upload, Image as ImageIcon, Trash2, Loader2, Camera } from 'lucide-react';
 
 interface CustomGiftModalProps {
   isOpen: boolean;
@@ -50,7 +51,7 @@ export const CustomGiftModal: React.FC<CustomGiftModalProps> = ({
     if (!file) return;
 
     if (!file.type.startsWith('image/')) {
-      setError('Por favor, selecione um arquivo de imagem válido (JPG, PNG).');
+      setError('Por favor, selecione um arquivo de imagem válido (JPG, PNG, WebP).');
       return;
     }
 
@@ -59,13 +60,19 @@ export const CustomGiftModal: React.FC<CustomGiftModalProps> = ({
 
     const reader = new FileReader();
     reader.onload = (event) => {
+      const rawDataUrl = event.target?.result as string;
+      if (!rawDataUrl) {
+        setUploadingImage(false);
+        return;
+      }
+
       const img = new Image();
       img.onload = async () => {
         try {
           const canvas = document.createElement('canvas');
           let width = img.width;
           let height = img.height;
-          const MAX_SIZE = 700;
+          const MAX_SIZE = 800;
 
           if (width > height) {
             if (width > MAX_SIZE) {
@@ -82,14 +89,25 @@ export const CustomGiftModal: React.FC<CustomGiftModalProps> = ({
           canvas.width = width;
           canvas.height = height;
           const ctx = canvas.getContext('2d');
-          let base64Data = '';
+          let base64Data = rawDataUrl;
           if (ctx) {
             ctx.drawImage(img, 0, 0, width, height);
-            base64Data = canvas.toDataURL('image/jpeg', 0.80);
-          } else {
-            base64Data = event.target?.result as string;
+            base64Data = canvas.toDataURL('image/jpeg', 0.82);
           }
 
+          // 1. Primary: Firebase Storage upload (same system as CouplePhotoUploader)
+          try {
+            const firebaseStorageUrl = await uploadPhotoToStorage(base64Data, 'gifts');
+            if (firebaseStorageUrl) {
+              setImageUrl(firebaseStorageUrl);
+              setUploadingImage(false);
+              return;
+            }
+          } catch (storageErr) {
+            console.warn('Tentativa no Firebase Storage falhou, tentando /api/upload:', storageErr);
+          }
+
+          // 2. Secondary: Server endpoint /api/upload
           try {
             const res = await fetch('/api/upload', {
               method: 'POST',
@@ -108,14 +126,26 @@ export const CustomGiftModal: React.FC<CustomGiftModalProps> = ({
             console.warn('Server upload fallback:', uploadErr);
           }
 
+          // 3. Fallback: optimized Data URL
           setImageUrl(base64Data);
         } catch (err: any) {
-          setError('Erro ao processar imagem.');
+          setError('Erro ao processar imagem. Tente outra foto.');
         } finally {
           setUploadingImage(false);
+          if (fileInputRef.current) {
+            fileInputRef.current.value = '';
+          }
         }
       };
-      img.src = event.target?.result as string;
+      img.onerror = () => {
+        setError('Não foi possível carregar a imagem selecionada.');
+        setUploadingImage(false);
+      };
+      img.src = rawDataUrl;
+    };
+    reader.onerror = () => {
+      setError('Erro ao ler arquivo.');
+      setUploadingImage(false);
     };
     reader.readAsDataURL(file);
   };
@@ -266,10 +296,31 @@ export const CustomGiftModal: React.FC<CustomGiftModalProps> = ({
             />
           </div>
 
-          <div>
-            <label className="block text-[10px] sm:text-xs font-bold text-[#2D2D2D] uppercase tracking-[0.15em] mb-1.5">
-              Foto do Presente (Opcional)
-            </label>
+          {/* SISTEMA DE UPLOAD DIRETO PARA FOTO DO PRESENTE (SEM CAMPO DE URL) */}
+          <div className="bg-[#FAF9F6] border border-[#E5DFD5] rounded-2xl p-4 space-y-3">
+            <div className="flex items-center justify-between">
+              <div>
+                <label className="block text-[10px] sm:text-xs font-bold text-[#2D2D2D] uppercase tracking-[0.15em] flex items-center space-x-1.5">
+                  <Camera className="w-3.5 h-3.5 text-[#C5A059]" />
+                  <span>Foto do Presente (Opcional)</span>
+                </label>
+                <p className="text-[11px] text-[#2D2D2D]/60 font-sans mt-0.5">
+                  Envie uma foto diretamente do seu celular ou computador
+                </p>
+              </div>
+
+              {imageUrl && (
+                <button
+                  type="button"
+                  onClick={() => setImageUrl('')}
+                  className="text-rose-700 hover:text-rose-900 text-[10px] font-bold uppercase tracking-wider flex items-center space-x-1 bg-rose-50 px-2.5 py-1 rounded-lg border border-rose-200 transition cursor-pointer"
+                >
+                  <Trash2 className="w-3 h-3" />
+                  <span>Remover</span>
+                </button>
+              )}
+            </div>
+
             <input 
               type="file"
               ref={fileInputRef}
@@ -277,49 +328,51 @@ export const CustomGiftModal: React.FC<CustomGiftModalProps> = ({
               accept="image/*"
               className="hidden"
             />
-            <div className="flex items-center space-x-3 bg-[#FAF9F6] p-3 rounded-2xl border border-[#E5DFD5]">
-              {imageUrl ? (
-                <div className="relative w-16 h-16 rounded-xl overflow-hidden shrink-0 border border-[#C5A059]">
-                  <img src={imageUrl} alt="Preview" className="w-full h-full object-cover" />
-                  <button
-                    type="button"
-                    onClick={() => setImageUrl('')}
-                    className="absolute top-0.5 right-0.5 bg-rose-600 text-white p-0.5 rounded-full shadow-xs"
-                  >
-                    <Trash2 className="w-3 h-3" />
-                  </button>
-                </div>
-              ) : (
-                <div className="w-16 h-16 rounded-xl bg-[#F2ECE4] border border-dashed border-[#C5A059]/50 flex items-center justify-center shrink-0 text-[#C5A059]">
-                  <ImageIcon className="w-6 h-6" />
-                </div>
-              )}
-              <div className="flex-1 space-y-1.5">
+
+            <div className="grid grid-cols-1 sm:grid-cols-3 gap-3 items-center">
+              <div 
+                onClick={() => !uploadingImage && fileInputRef.current?.click()}
+                className="relative group rounded-2xl overflow-hidden border-2 border-[#C5A059]/40 aspect-[4/3] bg-[#F2ECE4] shadow-2xs flex items-center justify-center cursor-pointer"
+              >
+                {imageUrl ? (
+                  <img src={imageUrl} alt="Preview do Presente" className="w-full h-full object-cover group-hover:scale-105 transition duration-500" />
+                ) : (
+                  <div className="text-center p-2 text-[#2D2D2D]/50 space-y-1">
+                    <ImageIcon className="w-7 h-7 mx-auto text-[#C5A059]" />
+                    <span className="text-[9px] font-bold uppercase block">Sem foto</span>
+                  </div>
+                )}
+
+                {uploadingImage && (
+                  <div className="absolute inset-0 bg-black/60 backdrop-blur-xs flex items-center justify-center text-white text-[11px] font-bold space-x-1.5">
+                    <Loader2 className="w-4 h-4 animate-spin text-[#C5A059]" />
+                    <span>Enviando...</span>
+                  </div>
+                )}
+              </div>
+
+              <div className="sm:col-span-2 space-y-2">
                 <button
                   type="button"
                   disabled={uploadingImage}
                   onClick={() => fileInputRef.current?.click()}
-                  className="px-3 py-1.5 bg-white hover:bg-[#F2ECE4] text-[#2D2D2D] border border-[#E5DFD5] rounded-xl text-xs font-bold uppercase tracking-wider flex items-center space-x-1.5 shadow-2xs transition active:scale-95 cursor-pointer disabled:opacity-50"
+                  className="w-full py-3 px-4 bg-[#2D2D2D] hover:bg-black text-white rounded-xl text-xs font-bold uppercase tracking-wider flex items-center justify-center space-x-2 shadow-2xs transition active:scale-95 cursor-pointer disabled:opacity-50"
                 >
                   {uploadingImage ? (
                     <>
-                      <Loader2 className="w-3.5 h-3.5 text-[#C5A059] animate-spin" />
+                      <Loader2 className="w-4 h-4 text-[#C5A059] animate-spin" />
                       <span>Processando Foto...</span>
                     </>
                   ) : (
                     <>
-                      <Upload className="w-3.5 h-3.5 text-[#C5A059]" />
-                      <span>{imageUrl ? 'Trocar Foto' : 'Enviar Foto'}</span>
+                      <Upload className="w-4 h-4 text-[#C5A059]" />
+                      <span>{imageUrl ? 'Trocar Foto do Aparelho' : 'Subir Foto do Celular / PC'}</span>
                     </>
                   )}
                 </button>
-                <input 
-                  type="url"
-                  placeholder="Ou cole o link da foto (URL)..."
-                  value={imageUrl}
-                  onChange={e => setImageUrl(e.target.value)}
-                  className="w-full px-3 py-1.5 text-xs border border-[#E5DFD5] bg-white rounded-xl focus:border-[#C5A059] outline-none font-sans"
-                />
+                <p className="text-[10px] text-[#2D2D2D]/55 text-center sm:text-left font-sans">
+                  Formatos aceitos: JPG, PNG ou WebP (otimização automática).
+                </p>
               </div>
             </div>
           </div>
@@ -334,11 +387,11 @@ export const CustomGiftModal: React.FC<CustomGiftModalProps> = ({
             </button>
             <button
               type="submit"
-              disabled={loading}
-              className="flex-1 sm:flex-initial px-6 py-3.5 text-xs font-bold uppercase tracking-[0.15em] text-white bg-[#2D2D2D] hover:bg-black active:scale-95 rounded-2xl shadow-xs flex items-center justify-center space-x-2 transition disabled:opacity-50"
+              disabled={loading || uploadingImage}
+              className="flex-1 sm:flex-initial px-6 py-3.5 text-xs font-bold uppercase tracking-[0.15em] text-white bg-[#2D2D2D] hover:bg-black active:scale-95 rounded-2xl shadow-xs flex items-center justify-center space-x-2 transition disabled:opacity-50 cursor-pointer"
             >
               <Plus className="w-4 h-4 text-[#C5A059]" />
-              <span>{isGuestView ? 'Dar este Presente' : 'Adicionar à Lista'}</span>
+              <span>{uploadingImage ? 'Enviando Foto...' : loading ? 'Salvando...' : (isGuestView ? 'Dar este Presente' : 'Adicionar à Lista')}</span>
             </button>
           </div>
         </form>

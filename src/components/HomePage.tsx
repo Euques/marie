@@ -217,35 +217,26 @@ export const HomePage: React.FC<HomePageProps> = ({
       </div>
 
       {/* 2. CARD DO EVENTO: DATA E HORÁRIO (EMBAIXO DO CARD DOS NOIVOS) */}
-      <div className="space-y-3 pt-1">
-        <div className="flex items-center justify-between px-1">
-          <div className="flex items-center space-x-2">
-            <Sparkles className="w-5 h-5 text-[#C5A059]" />
-            <h2 className="text-xl sm:text-2xl font-extrabold text-[#2D2D2D] tracking-tight">
-              Data do Chá de Panela
-            </h2>
-          </div>
-          {daysLeft !== null && daysLeft >= 0 && (
-            <span className="px-3.5 py-1 bg-[#F2ECE4] text-[#C5A059] border border-[#E5DFD5] text-[10px] font-bold uppercase tracking-wider rounded-full shadow-2xs">
-              {daysLeft === 0 ? '🎉 É Hoje!' : `Faltam ${daysLeft} dias`}
-            </span>
-          )}
-        </div>
-
-        {/* CARD SEPARADO: DATA E HORÁRIO */}
-        <div className="bg-white p-6 sm:p-8 rounded-[2.5rem] border-2 border-[#E5DFD5] shadow-md space-y-5 hover:border-[#C5A059] transition-all">
-          <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
-            <div className="flex items-center space-x-3.5">
-              <div className="w-14 h-14 rounded-2xl bg-[#F2ECE4] text-[#C5A059] flex items-center justify-center shrink-0 border border-[#E5DFD5] shadow-2xs">
-                <Calendar className="w-7 h-7" />
-              </div>
-              <div>
+      <div className="bg-white p-6 sm:p-8 rounded-[2.5rem] border-2 border-[#E5DFD5] shadow-md space-y-5 hover:border-[#C5A059] transition-all">
+        <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
+          <div className="flex items-center space-x-3.5">
+            <div className="w-14 h-14 rounded-2xl bg-[#F2ECE4] text-[#C5A059] flex items-center justify-center shrink-0 border border-[#E5DFD5] shadow-2xs">
+              <Calendar className="w-7 h-7" />
+            </div>
+            <div>
+              <div className="flex items-center space-x-2">
                 <span className="text-[10px] uppercase tracking-widest font-bold text-[#C5A059] bg-[#FAF9F6] px-2.5 py-0.5 rounded-full border border-[#E5DFD5]">
                   Data & Horário
                 </span>
-                <span className="text-xs font-bold text-[#2D2D2D] block mt-0.5">Quando comemorar</span>
+                {daysLeft !== null && daysLeft >= 0 && (
+                  <span className="px-2.5 py-0.5 bg-[#F2ECE4] text-[#C5A059] border border-[#E5DFD5] text-[10px] font-bold uppercase tracking-wider rounded-full">
+                    {daysLeft === 0 ? '🎉 É Hoje!' : `Faltam ${daysLeft} dias`}
+                  </span>
+                )}
               </div>
+              <span className="text-xs font-bold text-[#2D2D2D] block mt-0.5">Quando comemorar</span>
             </div>
+          </div>
 
             {/* Link para o endereço no final da página */}
             <a 
@@ -271,7 +262,6 @@ export const HomePage: React.FC<HomePageProps> = ({
             <span>Reserve na sua agenda para não perder este momento especial!</span>
             <span className="font-bold text-[#C5A059]">Esperamos por você! ❤️</span>
           </div>
-        </div>
       </div>
 
       {/* 3. CARD DE LISTA DE PRESENTES (EXIBIDO SOMENTE APÓS CONFIRMAR PRESENÇA) */}
@@ -666,19 +656,7 @@ export const HomePage: React.FC<HomePageProps> = ({
       </div>
 
       {/* 6. CARD SEPARADO: ENDEREÇO E LOCALIZAÇÃO (NO FINAL DA PÁGINA) */}
-      <div id="localizacao-evento" className="space-y-3 pt-2 scroll-mt-6">
-        <div className="flex items-center justify-between px-1">
-          <div className="flex items-center space-x-2">
-            <MapPin className="w-5 h-5 text-[#C5A059]" />
-            <h2 className="text-xl sm:text-2xl font-extrabold text-[#2D2D2D] tracking-tight">
-              Endereço e Localização
-            </h2>
-          </div>
-          <span className="text-[10px] uppercase tracking-widest font-bold text-[#C5A059] bg-[#FAF9F6] px-3 py-1 rounded-full border border-[#E5DFD5]">
-            Como Chegar
-          </span>
-        </div>
-
+      <div id="localizacao-evento" className="scroll-mt-6">
         <div className="bg-white p-6 sm:p-8 rounded-[2.5rem] border-2 border-[#E5DFD5] shadow-md space-y-6 hover:border-[#C5A059] transition-all">
           <div className="flex items-center space-x-3.5">
             <div className="w-14 h-14 rounded-2xl bg-[#2D2D2D] text-[#C5A059] flex items-center justify-center shrink-0 shadow-2xs">
