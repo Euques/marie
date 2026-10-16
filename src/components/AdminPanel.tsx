@@ -683,7 +683,7 @@ export const AdminPanel: React.FC<AdminPanelProps> = ({
                 {activeTab === 'dashboard' && '1. Visão Geral & Resumo das Confirmações'}
                 {activeTab === 'settings' && '2. Configurações dos Noivos, Foto & Local'}
                 {activeTab === 'guests' && `3. Gerenciamento de Convidados (${guests.length})`}
-                {activeTab === 'gifts' && `4. Gestão & Sugestões de Presentes (${claimedGifts.length}/${gifts.length})`}
+                {activeTab === 'gifts' && `4. Gestão de Presentes (${claimedGifts.length}/${gifts.length})`}
                 {activeTab === 'invite' && '5. Enviar Convites WhatsApp'}
                 {activeTab === 'firebase' && '6. Banco em Nuvem (Firebase)'}
               </p>
@@ -771,7 +771,7 @@ export const AdminPanel: React.FC<AdminPanelProps> = ({
                 <div className={`p-2 rounded-xl ${activeTab === 'gifts' ? 'bg-[#C5A059]/20 text-[#C5A059]' : 'bg-[#F2ECE4] text-[#C5A059]'}`}>
                   <GiftIcon className="w-4 h-4" />
                 </div>
-                <span className="font-serif normal-case text-sm font-bold tracking-normal">Gestão & Sugestões de Presentes</span>
+                <span className="font-serif normal-case text-sm font-bold tracking-normal">Gestão de Presentes</span>
               </div>
               <span className="text-[10px] font-bold px-2 py-0.5 rounded-md bg-[#C5A059]/20 text-[#C5A059]">
                 {claimedGifts.length} / {gifts.length} Reservados
@@ -1187,29 +1187,6 @@ export const AdminPanel: React.FC<AdminPanelProps> = ({
 
             <div className="flex flex-wrap items-center gap-2 self-start sm:self-auto">
               <button
-                onClick={() => setIsCatalogModalOpen(true)}
-                className="px-4 py-2.5 bg-[#C5A059] hover:bg-[#B38F48] text-white font-bold text-[10px] uppercase tracking-[0.15em] rounded-2xl shadow-xs transition-all flex items-center space-x-1.5 cursor-pointer active:scale-95"
-              >
-                <Sparkles className="w-4 h-4 text-white" />
-                <span>Escolher das Sugestões</span>
-              </button>
-
-              {onClearGifts && gifts.length > 0 && (
-                <button
-                  onClick={() => {
-                    if (confirm('Tem certeza que deseja apagar TODOS os presentes da lista?')) {
-                      onClearGifts();
-                    }
-                  }}
-                  className="px-3 py-2.5 bg-rose-50 hover:bg-rose-100 text-rose-700 font-bold text-[10px] uppercase tracking-wider rounded-2xl border border-rose-200 transition flex items-center space-x-1 cursor-pointer active:scale-95"
-                  title="Limpar todos os presentes da lista"
-                >
-                  <Trash2 className="w-3.5 h-3.5" />
-                  <span>Zerar Lista</span>
-                </button>
-              )}
-
-              <button
                 onClick={() => {
                   setSelectedGiftForEdit(null);
                   setIsGiftModalOpen(true);
@@ -1351,26 +1328,18 @@ export const AdminPanel: React.FC<AdminPanelProps> = ({
                           </div>
                           <h4 className="font-serif italic font-bold text-lg text-[#2D2D2D]">Sua lista de presentes está vazia</h4>
                           <p className="text-xs text-[#2D2D2D]/60 font-sans leading-relaxed">
-                            Você pode abrir o catálogo e escolher individualmente os presentes desejados ou cadastrar um item personalizado.
+                            Cadastre os presentes da sua lista manualmente ou adicione sugestões enviadas pelos convidados via WhatsApp.
                           </p>
                           <div className="flex flex-wrap items-center justify-center gap-2 pt-1">
-                            <button
-                              onClick={() => setIsCatalogModalOpen(true)}
-                              className="px-4 py-2.5 bg-[#2D2D2D] hover:bg-black text-white font-bold text-[10px] uppercase tracking-wider rounded-xl transition flex items-center space-x-1.5 cursor-pointer shadow-xs active:scale-95"
-                            >
-                              <Sparkles className="w-3.5 h-3.5 text-[#C5A059]" />
-                              <span>Abrir Catálogo de Sugestões</span>
-                            </button>
-                            
                             <button
                               onClick={() => {
                                 setSelectedGiftForEdit(null);
                                 setIsGiftModalOpen(true);
                               }}
-                              className="px-4 py-2.5 bg-[#F2ECE4] hover:bg-[#E5DFD5] text-[#2D2D2D] font-bold text-[10px] uppercase tracking-wider rounded-xl border border-[#E5DFD5] transition flex items-center space-x-1.5 cursor-pointer active:scale-95"
+                              className="px-4 py-2.5 bg-[#2D2D2D] hover:bg-black text-white font-bold text-[10px] uppercase tracking-wider rounded-xl transition flex items-center space-x-1.5 cursor-pointer shadow-xs active:scale-95"
                             >
                               <Plus className="w-3.5 h-3.5 text-[#C5A059]" />
-                              <span>Novo Presente Manual</span>
+                              <span>Novo Presente</span>
                             </button>
                           </div>
                         </div>

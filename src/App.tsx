@@ -263,9 +263,12 @@ export default function App() {
           console.error(err);
         }
 
-        // ONLY manage couple profile if user is explicitly authenticated as couple admin
+        // ONLY auto-load couple profile when on the couple admin route (/noiva) without an explicit couple URL override
         const isCoupleAuth = sessionStorage.getItem('cha_couple_authenticated') === 'true';
-        if (isCoupleAuth) {
+        const urlParams = new URLSearchParams(window.location.search);
+        const hasUrlCouple = Boolean(urlParams.get('casal') || urlParams.get('couple') || urlParams.get('c') || extractSlugFromPath(window.location.pathname));
+        const activeRoute = getRouteFromPath(window.location.pathname, window.location.search);
+        if (isCoupleAuth && activeRoute === 'noiva' && !hasUrlCouple) {
           try {
             const couplesList = await getAllCouplesFromFirestore();
             setRegisteredCouples(couplesList);
@@ -368,7 +371,11 @@ export default function App() {
     const coupleId = couple.id;
     const slug = getCoupleSlug(couple.eventInfo?.brideName, couple.eventInfo?.groomName);
     const coupleUrl = `/casal/${slug}?casal=${encodeURIComponent(coupleId)}`;
-    
+
+    if (window.location.pathname + window.location.search !== coupleUrl) {
+      window.history.pushState({}, '', coupleUrl);
+    }
+
     setSelectedCoupleId(coupleId);
     try {
       localStorage.setItem('cha_selected_couple_id', coupleId);
@@ -380,9 +387,6 @@ export default function App() {
       guests: couple.guests || []
     });
 
-    if (window.location.pathname + window.location.search !== coupleUrl) {
-      window.history.pushState({}, '', coupleUrl);
-    }
     setCurrentRoute('casal');
     window.scrollTo({ top: 0, behavior: 'smooth' });
   };
@@ -462,7 +466,9 @@ export default function App() {
       const urlCoupleId = urlParams.get('casal') || urlParams.get('couple') || urlParams.get('c');
 
       // If an authenticated couple admin is on the admin panel without an explicit guest URL override
+      const activeRoute = getRouteFromPath(window.location.pathname, window.location.search);
       const isCouple =
+        activeRoute === 'noiva' &&
         auth.currentUser &&
         !auth.currentUser.isAnonymous &&
         sessionStorage.getItem('cha_couple_authenticated') === 'true' &&
@@ -1260,13 +1266,23 @@ export default function App() {
           </p>
         </footer>
       ) : (
-        <footer className="no-print py-6 text-center text-[#2D2D2D]/50 text-xs border-t border-[#E5DFD5]/60 bg-white/50">
-          <div className="flex items-center justify-center space-x-1 font-serif text-sm text-[#2D2D2D]">
+        <footer className="no-print py-8 text-center text-[#2D2D2D]/50 text-xs border-t border-[#E5DFD5]/60 bg-white/50 space-y-2.5">
+          <div className="flex items-center justify-center space-x-1.5 font-serif text-base font-bold text-[#2D2D2D]">
             <span>{data.eventInfo.brideName}</span>
             <Heart className="w-3.5 h-3.5 text-[#C5A059] fill-current" />
             <span>{data.eventInfo.groomName}</span>
           </div>
-          <p className="mt-1 text-[11px] font-sans text-[#2D2D2D]/60">Chá de Panela • Lista de Presentes & Confirmação de Presença</p>
+          <p className="text-[11px] font-sans text-[#2D2D2D]/60">Chá de Panela • Lista de Presentes & Confirmação de Presença</p>
+          <div className="pt-1">
+            <button
+              type="button"
+              onClick={() => navigate('home')}
+              className="inline-flex items-center space-x-1.5 px-4 py-2 rounded-xl bg-[#FAF9F6] hover:bg-[#F2ECE4] border border-[#E5DFD5] text-[11px] font-bold text-[#2D2D2D]/80 hover:text-[#C5A059] transition cursor-pointer shadow-2xs"
+            >
+              <Home className="w-3.5 h-3.5 text-[#C5A059]" />
+              <span>Ir para a Home (Todos os Casais)</span>
+            </button>
+          </div>
         </footer>
       )}
     </div>

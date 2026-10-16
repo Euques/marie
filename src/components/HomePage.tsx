@@ -1,5 +1,6 @@
 import React, { useState, useMemo } from 'react';
 import { EventInfo, Guest, GuestAuthSession } from '../types';
+import { getEventCategoryLabel } from '../lib/formatters';
 import { 
   Heart, Calendar, Clock, MapPin, Copy, Check, ExternalLink, 
   Sparkles, QrCode, MessageCircle, Send, Users, CheckCircle2, 
@@ -168,7 +169,7 @@ export const HomePage: React.FC<HomePageProps> = ({
           <div className="absolute top-4 left-4 sm:top-6 sm:left-6 flex items-center space-x-2">
             <span className="px-3.5 py-1.5 bg-white/90 backdrop-blur-md text-[#C5A059] text-[10px] font-bold uppercase tracking-[0.25em] rounded-full border border-white/40 shadow-md flex items-center space-x-1.5">
               <Sparkles className="w-3.5 h-3.5 text-[#C5A059]" />
-              <span>Chá de Panela</span>
+              <span>{getEventCategoryLabel(eventInfo.eventTitle)}</span>
             </span>
             {daysLeft !== null && daysLeft >= 0 && (
               <span className="px-3.5 py-1.5 bg-[#2D2D2D]/90 backdrop-blur-md text-white text-[10px] font-bold uppercase tracking-wider rounded-full border border-white/20 shadow-md flex items-center space-x-1.5">
@@ -179,12 +180,12 @@ export const HomePage: React.FC<HomePageProps> = ({
           </div>
 
           {/* Bottom Hero Text Overlay */}
-          <div className="absolute bottom-6 left-6 right-6 sm:bottom-8 sm:left-8 sm:right-8 text-white space-y-1">
-            <p className="text-[11px] sm:text-xs uppercase tracking-[0.3em] font-medium text-amber-200/90 font-sans">
-              {eventInfo.eventTitle || 'Chá de Panela'}
+          <div className="absolute bottom-6 left-6 right-6 sm:bottom-8 sm:left-8 sm:right-8 text-white space-y-1.5">
+            <p className="text-[11px] sm:text-xs uppercase tracking-[0.3em] font-semibold text-amber-200/95 font-sans">
+              {getEventCategoryLabel(eventInfo.eventTitle)}
             </p>
-            <h1 className="text-3xl sm:text-5xl lg:text-6xl font-extrabold tracking-tight text-white drop-shadow-md">
-              {eventInfo.brideName} <span className="text-[#C5A059]">&</span> {eventInfo.groomName}
+            <h1 className="font-serif text-4xl sm:text-6xl lg:text-7xl font-black tracking-tight text-white drop-shadow-lg leading-tight">
+              {eventInfo.brideName} <span className="text-[#C5A059] italic font-normal">&</span> {eventInfo.groomName}
             </h1>
           </div>
         </div>
@@ -197,19 +198,6 @@ export const HomePage: React.FC<HomePageProps> = ({
             </div>
             <p className="text-[#2D2D2D] max-w-2xl mx-auto text-sm sm:text-base leading-relaxed font-medium">
               "{eventInfo.welcomeMessage}"
-            </p>
-          </div>
-        )}
-
-        {/* DICA GERAL DOS NOIVOS PARA OS PRESENTES */}
-        {eventInfo.giftPreferencesGuide && (
-          <div className="p-5 sm:p-6 bg-gradient-to-r from-[#FAF9F6] via-[#F2ECE4]/50 to-[#FAF9F6] border-t border-[#E5DFD5]/80 text-center space-y-2">
-            <div className="inline-flex items-center space-x-1.5 px-3 py-1 rounded-full bg-white border border-[#E5DFD5] text-[#C5A059] text-[10px] font-bold uppercase tracking-wider shadow-2xs">
-              <Sparkles className="w-3.5 h-3.5 text-[#C5A059]" />
-              <span>Dica dos Noivos para os Presentes</span>
-            </div>
-            <p className="text-[#2D2D2D]/85 max-w-2xl mx-auto text-xs sm:text-sm leading-relaxed italic font-sans font-normal">
-              "{eventInfo.giftPreferencesGuide}"
             </p>
           </div>
         )}

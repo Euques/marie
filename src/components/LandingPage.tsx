@@ -1,6 +1,6 @@
 import React from 'react';
 import { AppRoute, CoupleProfile } from '../types';
-import { formatEventDate, getCoupleSlug, getCleanEventDisplayTitle } from '../lib/formatters';
+import { formatEventDate, getCoupleSlug, getEventCategoryLabel } from '../lib/formatters';
 import { 
   Heart, Sparkles, Gift, Users, ArrowRight, 
   PlusCircle, Calendar, MapPin, Crown, Eye
@@ -95,7 +95,7 @@ export const LandingPage: React.FC<LandingPageProps> = ({
             {couples.map((couple) => {
               const info = couple.eventInfo;
               const brideGroomTitle = `${info.brideName || 'Noiva'} & ${info.groomName || 'Noivo'}`;
-              const displayTitle = getCleanEventDisplayTitle(info.eventTitle, info.brideName, info.groomName);
+              const categoryTitle = getEventCategoryLabel(info.eventTitle);
               const slug = getCoupleSlug(info.brideName, info.groomName);
               const coupleHref = `/casal/${slug}?casal=${encodeURIComponent(couple.id)}`;
 
@@ -136,15 +136,15 @@ export const LandingPage: React.FC<LandingPageProps> = ({
                   {/* DETAILS */}
                   <div className="p-5 space-y-3 flex-1">
                     <div>
+                      <p className="text-[10px] font-bold uppercase tracking-[0.2em] text-[#C5A059]">
+                        {categoryTitle}
+                      </p>
                       <h3 
                         onClick={handleOpenCouple}
-                        className="text-xl font-extrabold text-[#2D2D2D] tracking-tight group-hover:text-[#C5A059] transition-colors cursor-pointer"
+                        className="font-serif text-2xl font-black text-[#2D2D2D] tracking-tight group-hover:text-[#C5A059] transition-colors cursor-pointer mt-0.5"
                       >
                         {brideGroomTitle}
                       </h3>
-                      <p className="text-xs font-semibold text-[#C5A059]">
-                        {displayTitle}
-                      </p>
                     </div>
 
                     <div className="space-y-1.5 text-xs text-[#2D2D2D]/70 font-medium">
