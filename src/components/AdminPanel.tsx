@@ -335,12 +335,33 @@ export const AdminPanel: React.FC<AdminPanelProps> = ({
     }
   };
 
-  const getWhatsAppMessage = (guestName?: string) => {
+  const [copiedCoupleLink, setCopiedCoupleLink] = useState(false);
+
+  const getCoupleSlug = (brideName?: string, groomName?: string): string => {
+    const bride = (brideName || 'noiva').trim() || 'noiva';
+    const groom = (groomName || 'noivo').trim() || 'noivo';
+    return `${bride}-e-${groom}`
+      .toLowerCase()
+      .normalize('NFD')
+      .replace(/[\u0300-\u036f]/g, '')
+      .replace(/[^a-z0-9]+/g, '-')
+      .replace(/(^-|-$)/g, '');
+  };
+
+  const getCoupleInviteLink = (): string => {
     const coupleId = eventInfo.id || auth.currentUser?.uid || '';
-    const link = coupleId ? `${window.location.origin}/?casal=${coupleId}` : window.location.origin;
+    const slug = getCoupleSlug(eventInfo.brideName, eventInfo.groomName);
+    if (coupleId) {
+      return `${window.location.origin}/casal/${slug}?casal=${encodeURIComponent(coupleId)}`;
+    }
+    return `${window.location.origin}/casal/${slug}`;
+  };
+
+  const getWhatsAppMessage = (guestName?: string) => {
+    const link = getCoupleInviteLink();
     const nameStr = guestName ? `Olá, ${guestName}! ` : '';
     const brideGroom = eventInfo.brideName ? `${eventInfo.brideName}${eventInfo.groomName ? ` & ${eventInfo.groomName}` : ''}` : 'Noivos';
-    return `*Convite Especial de Chá de Panela* 🎉\n\n${nameStr}Você está convidado(a) para o *${eventInfo.eventTitle || 'Chá de Panela'}* de *${brideGroom}*!\n\n📅 *Data:* ${eventInfo.date || 'A definir'}\n⏰ *Horário:* ${eventInfo.time || 'A definir'}\n📍 *Local:* ${eventInfo.location || 'A definir'}\n\nAcesse nosso site exclusivo para confirmar sua presença e escolher um presente da lista:\n👉 ${link}`;
+    return `*Convite Especial de Chá de Panela* 🎉\n\n${nameStr}Você está convidado(a) para o *${eventInfo.eventTitle || 'Chá de Panela'}* de *${brideGroom}*!\n\n📅 *Data:* ${eventInfo.date || 'A definir'}\n⏰ *Horário:* ${eventInfo.time || 'A definir'}\n📍 *Local:* ${eventInfo.location || 'A definir'}\n\nAcesse o perfil do casal para confirmar sua presença e liberar a lista de presentes:\n👉 ${link}`;
   };
 
   const handleCopyWhatsAppInvite = (guestName?: string) => {
@@ -614,22 +635,24 @@ export const AdminPanel: React.FC<AdminPanelProps> = ({
         <div className="bg-[#FAF9F6] p-3 rounded-2xl border border-[#E5DFD5] flex flex-col sm:flex-row items-center justify-between gap-2.5 text-xs">
           <div className="flex items-center space-x-2 min-w-0 w-full sm:w-auto">
             <Share2 className="w-4 h-4 text-[#C5A059] shrink-0" />
-            <span className="font-bold text-[#2D2D2D] shrink-0">Link Único para Convidados:</span>
+            <span className="font-bold text-[#2D2D2D] shrink-0">Link do Perfil do Casal:</span>
             <span className="font-mono text-[11px] text-[#2D2D2D]/70 truncate bg-white px-2.5 py-1 rounded-lg border border-[#E5DFD5] w-full sm:w-auto">
-              {`${window.location.origin}/?casal=${eventInfo.id || auth.currentUser?.uid || ''}`}
+              {getCoupleInviteLink()}
             </span>
           </div>
 
           <button
             type="button"
             onClick={() => {
-              const url = `${window.location.origin}/?casal=${eventInfo.id || auth.currentUser?.uid || ''}`;
+              const url = getCoupleInviteLink();
               navigator.clipboard.writeText(url);
-              alert('Link exclusivo do casal copiado! Envie aos convidados para que vejam apenas a sua lista.');
+              setCopiedCoupleLink(true);
+              setTimeout(() => setCopiedCoupleLink(false), 3000);
             }}
-            className="px-3.5 py-1.5 bg-[#2D2D2D] hover:bg-black text-white text-[10px] font-bold uppercase tracking-wider rounded-xl transition cursor-pointer shrink-0 w-full sm:w-auto text-center shadow-2xs active:scale-95"
+            className="px-3.5 py-1.5 bg-[#2D2D2D] hover:bg-black text-white text-[10px] font-bold uppercase tracking-wider rounded-xl transition cursor-pointer shrink-0 w-full sm:w-auto text-center shadow-2xs active:scale-95 flex items-center justify-center space-x-1.5"
           >
-            Copiar Link
+            {copiedCoupleLink ? <Check className="w-3.5 h-3.5 text-[#C5A059]" /> : <Copy className="w-3.5 h-3.5 text-[#C5A059]" />}
+            <span>{copiedCoupleLink ? 'Link Copiado!' : 'Copiar Link'}</span>
           </button>
         </div>
       </div>
@@ -1452,7 +1475,42 @@ export const AdminPanel: React.FC<AdminPanelProps> = ({
               <Share2 className="w-6 h-6" />
             </div>
             <h2 className="font-serif italic text-2xl font-bold text-[#2D2D2D]">Gerador de Convite para WhatsApp</h2>
-            <p className="text-xs text-[#2D2D2D]/60 font-sans">Copie a mensagem pronta com o link do seu site para enviar no WhatsApp aos convidados!</p>
+            <p className="text-xs text-[#2D2D2D]/60 font-sans">
+              O link leva diretamente para o perfil do casal com miniatura (thumbnail) e dados dos noivos nas redes sociais!
+            </p>
+          </div>
+
+          {/* PRÉVIA DA MINIATURA (OPENGRAPH CARD) */}
+          <div className="bg-[#FAF9F6] p-4 rounded-2xl border border-[#E5DFD5] space-y-2.5">
+            <div className="flex items-center justify-between text-[10px] font-bold uppercase tracking-widest text-[#C5A059]">
+              <span>Prévia do Link Compartilhado (Thumbnail OG)</span>
+              <span className="bg-emerald-50 text-emerald-700 border border-emerald-200 px-2 py-0.5 rounded-full">
+                Ativo
+              </span>
+            </div>
+            <div className="bg-white rounded-xl border border-[#E5DFD5] overflow-hidden flex flex-col sm:flex-row shadow-2xs">
+              <div className="sm:w-40 h-36 sm:h-auto bg-stone-100 shrink-0 overflow-hidden">
+                <img
+                  src={eventInfo.coverImage || 'https://images.unsplash.com/photo-1522673607200-164d1b6ce486?auto=format&fit=crop&w=600&q=80'}
+                  alt={`${eventInfo.brideName} & ${eventInfo.groomName}`}
+                  className="w-full h-full object-cover"
+                />
+              </div>
+              <div className="p-4 flex flex-col justify-center space-y-1 min-w-0">
+                <span className="text-[10px] font-mono text-[#2D2D2D]/50 truncate">
+                  {window.location.host}
+                </span>
+                <h4 className="font-bold text-sm text-[#2D2D2D] truncate">
+                  {eventInfo.eventTitle || 'Chá de Panela'} — {eventInfo.brideName} & {eventInfo.groomName}
+                </h4>
+                <p className="text-xs text-[#2D2D2D]/70 line-clamp-2">
+                  {eventInfo.welcomeMessage || 'Confirme sua presença e confira nossa lista de presentes especial!'}
+                </p>
+                <span className="text-[11px] font-mono text-[#C5A059] truncate pt-1">
+                  {getCoupleInviteLink()}
+                </span>
+              </div>
+            </div>
           </div>
 
           <div className="bg-[#2D2D2D] text-emerald-300 p-6 rounded-3xl font-mono text-xs whitespace-pre-wrap leading-relaxed shadow-inner border border-stone-800">
@@ -1462,7 +1520,7 @@ export const AdminPanel: React.FC<AdminPanelProps> = ({
           <div className="flex flex-col sm:flex-row gap-3">
             <button
               onClick={() => handleCopyWhatsAppInvite()}
-              className="flex-1 py-3.5 bg-[#2D2D2D] hover:bg-black active:scale-98 text-white font-bold text-[10px] uppercase tracking-[0.2em] rounded-2xl shadow-xs transition-all flex items-center justify-center space-x-2"
+              className="flex-1 py-3.5 bg-[#2D2D2D] hover:bg-black active:scale-98 text-white font-bold text-[10px] uppercase tracking-[0.2em] rounded-2xl shadow-xs transition-all flex items-center justify-center space-x-2 cursor-pointer"
             >
               {copiedInvite ? <Check className="w-4 h-4 text-[#C5A059]" /> : <Copy className="w-4 h-4 text-[#C5A059]" />}
               <span>{copiedInvite ? 'Texto Copiado!' : 'Copiar Texto para WhatsApp'}</span>

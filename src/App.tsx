@@ -29,22 +29,39 @@ import {
 } from './lib/firebase';
 
 const getCoupleSlug = (brideName?: string, groomName?: string): string => {
-  const bride = brideName || 'mariana';
-  const groom = groomName || 'lucas';
+  const bride = (brideName || 'noiva').trim() || 'noiva';
+  const groom = (groomName || 'noivo').trim() || 'noivo';
   return `${bride}-e-${groom}`
     .toLowerCase()
     .normalize('NFD')
     .replace(/[\u0300-\u036f]/g, '')
-    .replace(/[^a-z0-9]+/g, '-');
+    .replace(/[^a-z0-9]+/g, '-')
+    .replace(/^-|-$/g, '');
 };
 
-const getRouteFromPath = (path: string): AppRoute => {
+const extractSlugFromPath = (pathname: string): string | null => {
+  const match = pathname.toLowerCase().match(/\/(?:casal|evento)\/([a-z0-9-]+)/);
+  if (match && match[1]) return match[1];
+  const parts = pathname.toLowerCase().split('/').filter(Boolean);
+  const slugPart = parts.find(p => p.includes('-e-'));
+  return slugPart || null;
+};
+
+const getRouteFromPath = (path: string, search: string = typeof window !== 'undefined' ? window.location.search : ''): AppRoute => {
   const p = path.toLowerCase();
   if (p.includes('/superadmin') || p.includes('/euques')) return 'superadmin';
-  if (p.includes('/casal') || p.includes('/evento') || p.includes('-e-')) return 'casal';
   if (p.includes('/presentes') || p.includes('/gifts')) return 'presentes';
   if (p.includes('/login') || p.includes('/entrar')) return 'login';
   if (p.includes('/noiva') || p.includes('/admin') || p.includes('/painel')) return 'noiva';
+  if (p.includes('/casal') || p.includes('/evento') || p.includes('-e-')) return 'casal';
+
+  if (search) {
+    const params = new URLSearchParams(search);
+    if (params.get('casal') || params.get('couple') || params.get('c')) {
+      return 'casal';
+    }
+  }
+
   return 'home';
 };
 
@@ -56,7 +73,7 @@ const getPathFromRoute = (route: AppRoute, data?: AppData): string => {
         const slug = getCoupleSlug(data.eventInfo.brideName, data.eventInfo.groomName);
         return `/casal/${slug}`;
       }
-      return '/casal/mariana-e-lucas';
+      return '/casal/noivos';
     }
     case 'presentes': return '/presentes';
     case 'login': return '/login';
@@ -66,6 +83,15 @@ const getPathFromRoute = (route: AppRoute, data?: AppData): string => {
   }
 };
 
+const isValidGuestSession = (session: GuestAuthSession | null | undefined): boolean => {
+  if (!session) return false;
+  const name = (session.name || '').trim();
+  const email = (session.email || '').trim();
+  if (!name || name === 'Convidado Firebase') return false;
+  if (!email || !email.includes('@')) return false;
+  return true;
+};
+
 export default function App() {
   const [data, setData] = useState<AppData>(initialData);
   const [registeredCouples, setRegisteredCouples] = useState<CoupleProfile[]>([]);
@@ -73,7 +99,10 @@ export default function App() {
     if (typeof window !== 'undefined') {
       const urlParams = new URLSearchParams(window.location.search);
       const urlCouple = urlParams.get('casal') || urlParams.get('couple') || urlParams.get('c');
-      if (urlCouple) return urlCouple;
+      if (urlCouple) {
+        localStorage.setItem('cha_selected_couple_id', urlCouple);
+        return urlCouple;
+      }
       return localStorage.getItem('cha_selected_couple_id') || null;
     }
     return null;
@@ -86,17 +115,23 @@ export default function App() {
 
   // URL-Based Route State
   const [currentRoute, setCurrentRoute] = useState<AppRoute>(() => {
-    return getRouteFromPath(window.location.pathname);
+    return getRouteFromPath(window.location.pathname, window.location.search);
   });
 
-  // Guest Authentication Session State
+  // Guest Authentication Session State (strictly requires real login with email, never anonymous)
   const [guestSession, setGuestSession] = useState<GuestAuthSession | null>(() => {
     try {
+      // Remove legacy global unauthenticated flags
+      localStorage.removeItem('cha_guest_rsvp_confirmed');
       const saved = localStorage.getItem('cha_guest_session');
-      if (saved) return JSON.parse(saved);
-      const legacyName = localStorage.getItem('cha_guest_name');
-      if (legacyName) {
-        return { name: legacyName, email: '', provider: 'email' };
+      if (saved) {
+        const parsed = JSON.parse(saved);
+        if (isValidGuestSession(parsed)) {
+          return parsed;
+        }
+        localStorage.removeItem('cha_guest_session');
+        localStorage.removeItem('cha_guest_name');
+        localStorage.removeItem('cha_guest_unlocked');
       }
     } catch {
       return null;
@@ -107,20 +142,93 @@ export default function App() {
   // Listen to browser popstate (back/forward buttons)
   useEffect(() => {
     const handlePopState = () => {
-      setCurrentRoute(getRouteFromPath(window.location.pathname));
+      setCurrentRoute(getRouteFromPath(window.location.pathname, window.location.search));
     };
     window.addEventListener('popstate', handlePopState);
     return () => window.removeEventListener('popstate', handlePopState);
   }, []);
 
-  // Listen to Firebase Authentication state changes
+  // Dynamically keep OpenGraph (OG), Twitter Cards, and document title synced with the active couple
+  useEffect(() => {
+    if (typeof document === 'undefined' || typeof window === 'undefined') return;
+
+    const info = data.eventInfo;
+    const isPlatformView = currentRoute === 'home' || currentRoute === 'superadmin';
+    const bride = (info?.brideName || 'Noiva').trim();
+    const groom = (info?.groomName || 'Noivo').trim();
+    const coupleNames = groom ? `${bride} & ${groom}` : bride;
+    const eventTitle = (info?.eventTitle || 'Chá de Panela').trim();
+    const slug = getCoupleSlug(bride, groom);
+    const activeId = selectedCoupleId || (info?.id && info.id !== 'main' ? info.id : '');
+
+    const title = isPlatformView
+      ? 'Chá de Panela — Plataforma de Eventos, Convites e Lista de Presentes'
+      : `${eventTitle} de ${coupleNames} | Convite & Lista de Presentes`;
+
+    const dateFormatted = info?.date
+      ? info.date.split('-').length === 3
+        ? `${info.date.split('-')[2]}/${info.date.split('-')[1]}/${info.date.split('-')[0]}`
+        : info.date
+      : '';
+    const datePart = dateFormatted ? ` 📅 Data: ${dateFormatted}${info?.time ? ` às ${info.time}` : ''}.` : '';
+    const locPart = info?.location ? ` 📍 Local: ${info.location}.` : '';
+    const description = isPlatformView
+      ? 'Painel completo para noivas organizarem o chá de panela, gerenciarem lista de convidados, confirmações (RSVP) e lista de presentes interativa para convidados.'
+      : `Você foi convidado(a) para o ${eventTitle} de ${coupleNames}!${datePart}${locPart} Acesse o perfil do casal para confirmar sua presença e visualizar a lista de presentes.`;
+
+    let ogImageUrl = 'https://images.unsplash.com/photo-1522673607200-164d1b6ce486?auto=format&fit=crop&w=1200&q=80';
+    if (!isPlatformView) {
+      if (info?.coverImage && (info.coverImage.startsWith('http://') || info.coverImage.startsWith('https://'))) {
+        ogImageUrl = info.coverImage;
+      } else if (info?.coverImage && info.coverImage.startsWith('/uploads/')) {
+        ogImageUrl = `${window.location.origin}${info.coverImage}`;
+      } else if (activeId || slug) {
+        ogImageUrl = `${window.location.origin}/api/og-image/${encodeURIComponent(activeId || slug)}.jpg`;
+      }
+    }
+
+    const canonicalUrl = !isPlatformView && activeId
+      ? `${window.location.origin}/casal/${slug}?casal=${encodeURIComponent(activeId)}`
+      : window.location.href;
+
+    document.title = title;
+
+    const setMeta = (selector: string, attrName: 'property' | 'name', attrVal: string, content: string) => {
+      let el = document.head.querySelector(selector) as HTMLMetaElement | null;
+      if (!el) {
+        el = document.createElement('meta');
+        el.setAttribute(attrName, attrVal);
+        document.head.appendChild(el);
+      }
+      el.setAttribute('content', content);
+    };
+
+    setMeta('meta[name="description"]', 'name', 'description', description);
+    setMeta('meta[property="og:title"]', 'property', 'og:title', title);
+    setMeta('meta[property="og:description"]', 'property', 'og:description', description);
+    setMeta('meta[property="og:image"]', 'property', 'og:image', ogImageUrl);
+    setMeta('meta[property="og:image:secure_url"]', 'property', 'og:image:secure_url', ogImageUrl);
+    setMeta('meta[property="og:url"]', 'property', 'og:url', canonicalUrl);
+    setMeta('meta[property="og:site_name"]', 'property', 'og:site_name', isPlatformView ? 'Chá de Panela' : `${eventTitle} • ${coupleNames}`);
+    setMeta('meta[name="twitter:title"]', 'name', 'twitter:title', title);
+    setMeta('meta[name="twitter:description"]', 'name', 'twitter:description', description);
+    setMeta('meta[name="twitter:image"]', 'name', 'twitter:image', ogImageUrl);
+
+    // Keep URL normalized to /casal/<slug>?casal=<id> when viewing the couple's profile from a root /?casal=<id> invite link
+    if (currentRoute === 'casal' && activeId && window.location.pathname === '/') {
+      const normalizedPath = `/casal/${slug}?casal=${encodeURIComponent(activeId)}`;
+      window.history.replaceState({}, '', normalizedPath);
+    }
+  }, [data.eventInfo, currentRoute, selectedCoupleId]);
+
+  // Listen to Firebase Authentication state changes (ignore anonymous Firestore connections)
   useEffect(() => {
     const unsubscribe = subscribeToAuthChanges(async (firebaseUser) => {
-      if (firebaseUser) {
+      if (firebaseUser && !firebaseUser.isAnonymous && firebaseUser.email) {
         const isGoogle = firebaseUser.providerData.some(p => p.providerId === 'google.com');
         const session: GuestAuthSession = {
-          name: firebaseUser.displayName || firebaseUser.email?.split('@')[0] || 'Convidado Firebase',
-          email: firebaseUser.email || '',
+          name: firebaseUser.displayName || firebaseUser.email.split('@')[0] || 'Convidado',
+          email: firebaseUser.email,
           provider: isGoogle ? 'google' : 'email'
         };
         setGuestSession(session);
@@ -168,17 +276,34 @@ export default function App() {
       setRegisteredCouples(couplesList);
       const urlParams = new URLSearchParams(window.location.search);
       const urlCoupleId = urlParams.get('casal') || urlParams.get('couple') || urlParams.get('c');
+      const pathSlug = extractSlugFromPath(window.location.pathname);
       const activeId = urlCoupleId || selectedCoupleId;
-      if (activeId) {
-        const matched = couplesList.find(c => c.id === activeId || c.aliasIds?.includes(activeId));
-        if (matched && matched.eventInfo) {
-          setData(prev => ({
-            ...prev,
-            eventInfo: matched.eventInfo || prev.eventInfo,
-            gifts: matched.gifts || prev.gifts,
-            guests: matched.guests || prev.guests
-          }));
+      let matched = activeId
+        ? couplesList.find(
+            c =>
+              c.id === activeId ||
+              c.aliasIds?.includes(activeId) ||
+              getCoupleSlug(c.eventInfo?.brideName, c.eventInfo?.groomName) === activeId.toLowerCase()
+          )
+        : undefined;
+
+      if (!matched && pathSlug) {
+        matched = couplesList.find(
+          c => getCoupleSlug(c.eventInfo?.brideName, c.eventInfo?.groomName) === pathSlug
+        );
+      }
+
+      if (matched && matched.eventInfo) {
+        if (matched.id && matched.id !== selectedCoupleId && (urlCoupleId || pathSlug)) {
+          setSelectedCoupleId(matched.id);
+          localStorage.setItem('cha_selected_couple_id', matched.id);
         }
+        setData(prev => ({
+          ...prev,
+          eventInfo: matched.eventInfo || prev.eventInfo,
+          gifts: matched.gifts || prev.gifts,
+          guests: matched.guests || prev.guests
+        }));
       }
     });
     return () => unsubAll();
@@ -237,6 +362,8 @@ export default function App() {
   };
 
   const handleLogoutGuest = async () => {
+    const prevEmail = guestSession?.email?.trim().toLowerCase();
+    const prevName = guestSession?.name?.trim().toLowerCase();
     setGuestSession(null);
     try {
       localStorage.removeItem('cha_guest_session');
@@ -245,6 +372,8 @@ export default function App() {
       localStorage.removeItem('cha_guest_rsvp_confirmed');
       if (selectedCoupleId) {
         localStorage.removeItem(`cha_guest_rsvp_confirmed_${selectedCoupleId}`);
+        if (prevEmail) localStorage.removeItem(`cha_rsvp_confirmed_${selectedCoupleId}_${prevEmail}`);
+        if (prevName) localStorage.removeItem(`cha_rsvp_confirmed_${selectedCoupleId}_${prevName}`);
       }
       await logoutFirebase();
     } catch (err) {
@@ -313,19 +442,25 @@ export default function App() {
         }
       }
 
-      // If a specific couple is requested via URL parameter or selection
+      // If a specific couple is requested via URL parameter, slug in pathname, or selection
+      const pathSlug = extractSlugFromPath(window.location.pathname);
       const targetCoupleId =
         urlCoupleId ||
+        pathSlug ||
         selectedCoupleId ||
         (typeof window !== 'undefined' ? localStorage.getItem('cha_selected_couple_id') : null);
 
       if (targetCoupleId) {
-        let found = couplesList.find(c => c.id === targetCoupleId || c.aliasIds?.includes(targetCoupleId));
+        let found = couplesList.find(
+          c =>
+            c.id === targetCoupleId ||
+            c.aliasIds?.includes(targetCoupleId) ||
+            getCoupleSlug(c.eventInfo?.brideName, c.eventInfo?.groomName) === targetCoupleId.toLowerCase()
+        );
         if (!found) {
           try {
             const directRecord = await getCoupleFromFirestore(targetCoupleId);
             if (directRecord && directRecord.eventInfo) {
-              // Check if there is a merged couple with the same bride & groom names
               const b = (directRecord.eventInfo.brideName || '').trim().toLowerCase();
               const g = (directRecord.eventInfo.groomName || '').trim().toLowerCase();
               const byNames = b ? couplesList.find(
@@ -400,9 +535,14 @@ export default function App() {
   }, []);
 
   const handleCopyLink = () => {
-    navigator.clipboard.writeText(window.location.href);
+    const slug = getCoupleSlug(data.eventInfo?.brideName, data.eventInfo?.groomName);
+    const activeId = selectedCoupleId || (data.eventInfo?.id && data.eventInfo.id !== 'main' ? data.eventInfo.id : '');
+    const coupleProfileLink = activeId
+      ? `${window.location.origin}/casal/${slug}?casal=${encodeURIComponent(activeId)}`
+      : `${window.location.origin}/casal/${slug}`;
+    navigator.clipboard.writeText(coupleProfileLink);
     setCopiedLink(true);
-    showToast('Link do Chá de Panela copiado!');
+    showToast('Link do Perfil do Casal copiado!');
     setTimeout(() => setCopiedLink(false), 3000);
   };
 
@@ -499,34 +639,18 @@ export default function App() {
   };
 
   const handleSubmitRsvp = async (rsvpData: { name: string; email?: string; phone?: string; companions: number; status: 'confirmed' | 'declined'; message?: string }) => {
-    const coupleKey = selectedCoupleId ? `cha_guest_rsvp_confirmed_${selectedCoupleId}` : null;
-    if (rsvpData.status === 'confirmed') {
-      localStorage.setItem('cha_guest_rsvp_confirmed', 'true');
-      if (coupleKey) localStorage.setItem(coupleKey, 'true');
-    } else {
-      localStorage.removeItem('cha_guest_rsvp_confirmed');
-      if (coupleKey) localStorage.removeItem(coupleKey);
-    }
-
-    // Auto-sync guestSession if not set
-    if (!guestSession && rsvpData.name) {
-      const session: GuestAuthSession = {
-        name: rsvpData.name.trim(),
-        email: rsvpData.email?.trim() || '',
-        provider: 'email'
-      };
-      setGuestSession(session);
-      try {
-        localStorage.setItem('cha_guest_session', JSON.stringify(session));
-        localStorage.setItem('cha_guest_name', session.name);
-      } catch (err) {
-        console.error(err);
-      }
-    }
-
     const cleanName = rsvpData.name.trim();
-    const cleanEmail = rsvpData.email?.trim() || '';
+    const cleanEmail = (rsvpData.email?.trim() || guestSession?.email?.trim() || '');
     const cleanPhone = rsvpData.phone?.trim() || '';
+    const activeCoupleId = selectedCoupleId || (data.eventInfo && data.eventInfo.id !== 'main' ? data.eventInfo.id : 'default');
+    const guestIdentity = (cleanEmail || cleanName).toLowerCase();
+    const scopedRsvpKey = activeCoupleId && guestIdentity ? `cha_rsvp_confirmed_${activeCoupleId}_${guestIdentity}` : null;
+
+    if (rsvpData.status === 'confirmed') {
+      if (scopedRsvpKey) localStorage.setItem(scopedRsvpKey, 'true');
+    } else {
+      if (scopedRsvpKey) localStorage.removeItem(scopedRsvpKey);
+    }
 
     // Check if guest already exists
     const existingIndex = data.guests.findIndex(g => 
@@ -571,9 +695,9 @@ export default function App() {
       guests: updatedGuests
     }));
 
-    const activeCoupleId = selectedCoupleId || (data.eventInfo && data.eventInfo.id !== 'main' ? data.eventInfo.id : null);
-    if (activeCoupleId) {
-      await saveCoupleToFirestore(activeCoupleId, data.eventInfo, data.gifts, updatedGuests);
+    const coupleIdForSave = selectedCoupleId || (data.eventInfo && data.eventInfo.id !== 'main' ? data.eventInfo.id : null);
+    if (coupleIdForSave) {
+      await saveCoupleToFirestore(coupleIdForSave, data.eventInfo, data.gifts, updatedGuests);
     } else {
       await saveGuestToFirestore(targetGuest);
     }
@@ -582,22 +706,24 @@ export default function App() {
       await fetch('/api/rsvp', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(rsvpData)
+        body: JSON.stringify({ ...rsvpData, email: cleanEmail })
       });
     } catch (err) {
       console.warn('Server rsvp sync notice:', err);
     }
 
     if (rsvpData.status === 'confirmed') {
-      localStorage.setItem('cha_guest_rsvp_confirmed', 'true');
-      const session = {
-        name: cleanName,
-        email: cleanEmail,
-        phone: cleanPhone,
-        authenticatedAt: new Date().toISOString()
-      };
-      setGuestSession(session);
-      localStorage.setItem('cha_guest_session', JSON.stringify(session));
+      if (guestSession && isValidGuestSession(guestSession)) {
+        const updatedSession: GuestAuthSession = {
+          ...guestSession,
+          name: cleanName || guestSession.name,
+          email: cleanEmail || guestSession.email,
+          phone: cleanPhone || guestSession.phone,
+          authenticatedAt: new Date().toISOString()
+        };
+        setGuestSession(updatedSession);
+        localStorage.setItem('cha_guest_session', JSON.stringify(updatedSession));
+      }
       showToast('🎉 Presença confirmada! A lista de presentes foi liberada!');
     } else {
       showToast('Resposta registrada. Sentiremos sua falta!');
@@ -891,46 +1017,55 @@ export default function App() {
 
   const isCoupleAdmin = Boolean(
     typeof window !== 'undefined' &&
-    (sessionStorage.getItem('cha_couple_authenticated') === 'true' ||
-      (auth.currentUser && selectedCoupleId && auth.currentUser.uid === selectedCoupleId))
+    sessionStorage.getItem('cha_couple_authenticated') === 'true' &&
+    auth.currentUser &&
+    !auth.currentUser.isAnonymous &&
+    (!selectedCoupleId || auth.currentUser.uid === selectedCoupleId || data.eventInfo?.id === auth.currentUser.uid)
   );
+
+  const isGuestLoggedIn = isValidGuestSession(guestSession);
 
   const isPresenceConfirmed = React.useMemo(() => {
     if (isSuperAdmin || isCoupleAdmin) return true;
-    if (!guestSession) return false;
-
-    const coupleKey = selectedCoupleId ? `cha_guest_rsvp_confirmed_${selectedCoupleId}` : null;
-    if (coupleKey && localStorage.getItem(coupleKey) === 'true') {
-      return true;
-    }
+    if (!isGuestLoggedIn || !guestSession) return false;
 
     const sessionName = (guestSession.name || '').trim().toLowerCase();
     const sessionEmail = (guestSession.email || '').trim().toLowerCase();
 
     const foundInGuests = data.guests.find(g => {
-      const matchName = g.name && g.name.trim().toLowerCase() === sessionName;
       const matchEmail = sessionEmail && g.email && g.email.trim().toLowerCase() === sessionEmail;
-      return matchName || matchEmail;
+      const matchName = sessionName && g.name && g.name.trim().toLowerCase() === sessionName;
+      return matchEmail || matchName;
     });
 
     if (foundInGuests) {
       return foundInGuests.status === 'confirmed';
     }
 
-    // Se o convidado já possui algum presente reservado no evento, sua presença está confirmada
+    const activeId = selectedCoupleId || (data.eventInfo && data.eventInfo.id !== 'main' ? data.eventInfo.id : 'default');
+    if (activeId) {
+      if (sessionEmail && localStorage.getItem(`cha_rsvp_confirmed_${activeId}_${sessionEmail}`) === 'true') {
+        return true;
+      }
+      if (sessionName && localStorage.getItem(`cha_rsvp_confirmed_${activeId}_${sessionName}`) === 'true') {
+        return true;
+      }
+    }
+
+    // Se este convidado logado já reservou algum presente neste evento, sua presença está confirmada
     const hasClaimedGift = Boolean(
-      sessionName && data.gifts.some(g => g.isClaimed && g.claimedByGuestName?.trim().toLowerCase() === sessionName)
+      data.gifts.some(g =>
+        g.isClaimed &&
+        ((sessionEmail && g.claimedByGuestEmail?.trim().toLowerCase() === sessionEmail) ||
+         (sessionName && g.claimedByGuestName?.trim().toLowerCase() === sessionName))
+      )
     );
     if (hasClaimedGift) {
       return true;
     }
 
-    if (localStorage.getItem('cha_guest_rsvp_confirmed') === 'true') {
-      return true;
-    }
-
     return false;
-  }, [guestSession, data.guests, data.gifts, selectedCoupleId, isSuperAdmin, isCoupleAdmin]);
+  }, [isGuestLoggedIn, guestSession, data.guests, data.gifts, selectedCoupleId, data.eventInfo?.id, isSuperAdmin, isCoupleAdmin]);
 
   const availableGiftsCount = data.gifts.filter(g => !g.isClaimed).length;
 
@@ -960,7 +1095,7 @@ export default function App() {
         currentRoute={currentRoute}
         onNavigate={navigate}
         eventInfo={data.eventInfo}
-        guestSession={guestSession}
+        guestSession={isGuestLoggedIn ? guestSession : null}
         onCopyLink={handleCopyLink}
         copiedLink={copiedLink}
         availableGiftsCount={availableGiftsCount}
@@ -1029,7 +1164,7 @@ export default function App() {
           <HomePage 
             eventInfo={data.eventInfo}
             guests={data.guests}
-            guestSession={guestSession}
+            guestSession={isGuestLoggedIn ? guestSession : null}
             onSubmitRsvp={handleSubmitRsvp}
             onNavigate={navigate}
             availableGiftsCount={availableGiftsCount}
@@ -1040,7 +1175,7 @@ export default function App() {
         {currentRoute === 'presentes' && (
           <GiftsPage 
             gifts={data.gifts}
-            guestSession={guestSession}
+            guestSession={isGuestLoggedIn ? guestSession : null}
             isPresenceConfirmed={isPresenceConfirmed}
             isCoupleAdmin={isCoupleAdmin}
             isSuperAdmin={isSuperAdmin}
@@ -1056,7 +1191,8 @@ export default function App() {
 
         {currentRoute === 'login' && (
           <LoginPage 
-            guestSession={guestSession}
+            guestSession={isGuestLoggedIn ? guestSession : null}
+            isPresenceConfirmed={isPresenceConfirmed}
             eventInfo={data.eventInfo}
             onLoginSuccess={handleLoginSuccess}
             onLogoutGuest={handleLogoutGuest}

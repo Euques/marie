@@ -5,6 +5,175 @@ import { fileURLToPath } from 'url';
 import { createServer as createViteServer } from 'vite';
 import { initialData } from './src/data/initialData';
 import { AppData, Gift, Guest, EventInfo } from './src/types';
+import { getAllCouplesFromFirestore, getCoupleFromFirestore, subscribeToAllCouplesRealtime } from './src/lib/firebase';
+
+const DEFAULT_COUPLE_PHOTO = 'https://images.unsplash.com/photo-1522673607200-164d1b6ce486?auto=format&fit=crop&w=1200&q=80';
+
+let cachedCouples: any[] = [];
+getAllCouplesFromFirestore()
+  .then((list) => {
+    if (Array.isArray(list) && list.length > 0) {
+      cachedCouples = list;
+    }
+  })
+  .catch(() => {});
+
+subscribeToAllCouplesRealtime((list) => {
+  if (Array.isArray(list)) {
+    cachedCouples = list;
+  }
+});
+
+function buildSlug(brideName?: string, groomName?: string): string {
+  const b = (brideName || 'noiva').toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g, '').replace(/[^a-z0-9]+/g, '-').replace(/^-|-$/g, '');
+  const g = (groomName || 'noivo').toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g, '').replace(/[^a-z0-9]+/g, '-').replace(/^-|-$/g, '');
+  return `${b}-e-${g}`;
+}
+
+function escapeHtml(str: string): string {
+  return String(str || '')
+    .replace(/&/g, '&amp;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;')
+    .replace(/"/g, '&quot;')
+    .replace(/'/g, '&#39;');
+}
+
+function formatDatePtBr(dateStr?: string): string {
+  if (!dateStr) return '';
+  const parts = dateStr.split('-');
+  if (parts.length === 3) {
+    return `${parts[2]}/${parts[1]}/${parts[0]}`;
+  }
+  return dateStr;
+}
+
+async function resolveCoupleForRequest(req: express.Request): Promise<any | null> {
+  const queryCoupleId = (req.query.casal || req.query.couple || req.query.c) as string | undefined;
+  const pathLower = (req.path || '').toLowerCase();
+  const slugMatch = pathLower.match(/\/(?:casal|evento)\/([a-z0-9-]+)/);
+  const pathSlug = slugMatch ? slugMatch[1] : null;
+
+  if (!queryCoupleId && !pathSlug) {
+    return null;
+  }
+
+  let list = cachedCouples;
+  if (!list || list.length === 0) {
+    try {
+      list = await getAllCouplesFromFirestore();
+      cachedCouples = list;
+    } catch {
+      list = [];
+    }
+  }
+
+  if (queryCoupleId) {
+    const cleanId = queryCoupleId.replace(/\.(jpg|jpeg|png|webp)$/i, '');
+    const found = list.find(
+      (c: any) =>
+        c.id === cleanId ||
+        (Array.isArray(c.aliasIds) && c.aliasIds.includes(cleanId)) ||
+        buildSlug(c.eventInfo?.brideName, c.eventInfo?.groomName) === cleanId.toLowerCase()
+    );
+    if (found) return found;
+
+    try {
+      const direct = await getCoupleFromFirestore(cleanId);
+      if (direct && direct.eventInfo) return direct;
+    } catch {
+      // fallback
+    }
+  }
+
+  if (pathSlug) {
+    const foundBySlug = list.find(
+      (c: any) =>
+        buildSlug(c.eventInfo?.brideName, c.eventInfo?.groomName) === pathSlug ||
+        c.id?.toLowerCase() === pathSlug
+    );
+    if (foundBySlug) return foundBySlug;
+  }
+
+  return null;
+}
+
+function injectCoupleOgTags(html: string, req: express.Request, couple: any | null): string {
+  if (!couple || !couple.eventInfo) return html;
+
+  const info: EventInfo = couple.eventInfo;
+  const protocol = ((req.headers['x-forwarded-proto'] as string) || req.protocol || 'https').split(',')[0].trim();
+  const host = ((req.headers['x-forwarded-host'] as string) || req.get('host') || 'localhost:3000').split(',')[0].trim();
+  const origin = `${protocol}://${host}`;
+
+  const bride = (info.brideName || 'Noiva').trim();
+  const groom = (info.groomName || 'Noivo').trim();
+  const coupleNames = groom ? `${bride} & ${groom}` : bride;
+  const eventTitle = (info.eventTitle || 'Chá de Panela').trim();
+  const slug = buildSlug(bride, groom);
+  const coupleId = couple.id || info.id || '';
+
+  const pageTitle = `${eventTitle} de ${coupleNames} | Convite & Lista de Presentes`;
+  const formattedDate = formatDatePtBr(info.date);
+  const datePart = formattedDate ? ` 📅 Data: ${formattedDate}${info.time ? ` às ${info.time}` : ''}.` : '';
+  const locationPart = info.location ? ` 📍 Local: ${info.location}.` : '';
+  const welcomePart = info.welcomeMessage ? ` "${info.welcomeMessage.slice(0, 90)}"` : '';
+  const description = `Você foi convidado(a) para o ${eventTitle} de ${coupleNames}!${datePart}${locationPart}${welcomePart} Acesse o perfil do casal, confirme sua presença e veja a lista de presentes.`;
+
+  let ogImageUrl = `${origin}/api/og-image/${encodeURIComponent(coupleId || slug)}.jpg`;
+  if (info.coverImage && (info.coverImage.startsWith('http://') || info.coverImage.startsWith('https://'))) {
+    ogImageUrl = info.coverImage;
+  } else if (info.coverImage && info.coverImage.startsWith('/uploads/')) {
+    ogImageUrl = `${origin}${info.coverImage}`;
+  }
+
+  const canonicalUrl = coupleId
+    ? `${origin}/casal/${slug}?casal=${encodeURIComponent(coupleId)}`
+    : `${origin}/casal/${slug}`;
+
+  const safeTitle = escapeHtml(pageTitle);
+  const safeDesc = escapeHtml(description);
+  const safeImage = escapeHtml(ogImageUrl);
+  const safeUrl = escapeHtml(canonicalUrl);
+  const safeSiteName = escapeHtml(`${eventTitle} • ${coupleNames}`);
+
+  let updated = html;
+  updated = updated.replace(/<title>[\s\S]*?<\/title>/i, `<title>${safeTitle}</title>`);
+  updated = updated.replace(
+    /<meta\s+name="description"\s+content="[^"]*"\s*\/?>/i,
+    `<meta name="description" content="${safeDesc}" />`
+  );
+  updated = updated.replace(
+    /<meta\s+property="og:site_name"\s+content="[^"]*"\s*\/?>/i,
+    `<meta property="og:site_name" content="${safeSiteName}" />`
+  );
+  updated = updated.replace(
+    /<meta\s+property="og:title"\s+content="[^"]*"\s*\/?>/i,
+    `<meta property="og:title" content="${safeTitle}" />`
+  );
+  updated = updated.replace(
+    /<meta\s+property="og:description"\s+content="[^"]*"\s*\/?>/i,
+    `<meta property="og:description" content="${safeDesc}" />`
+  );
+  updated = updated.replace(
+    /<meta\s+property="og:image"\s+content="[^"]*"\s*\/?>/i,
+    `<meta property="og:image" content="${safeImage}" />\n    <meta property="og:image:secure_url" content="${safeImage}" />\n    <meta property="og:url" content="${safeUrl}" />`
+  );
+  updated = updated.replace(
+    /<meta\s+name="twitter:title"\s+content="[^"]*"\s*\/?>/i,
+    `<meta name="twitter:title" content="${safeTitle}" />`
+  );
+  updated = updated.replace(
+    /<meta\s+name="twitter:description"\s+content="[^"]*"\s*\/?>/i,
+    `<meta name="twitter:description" content="${safeDesc}" />`
+  );
+  updated = updated.replace(
+    /<meta\s+name="twitter:image"\s+content="[^"]*"\s*\/?>/i,
+    `<meta name="twitter:image" content="${safeImage}" />`
+  );
+
+  return updated;
+}
 
 const getAppDir = () => {
   if (typeof __dirname !== 'undefined' && __dirname) {
@@ -380,6 +549,47 @@ async function startServer() {
     res.json({ success: true, message: 'Dados restaurados para o padrão original.' });
   });
 
+  // Dynamic OpenGraph Thumbnail endpoint for couple invite links
+  // Converts base64 data URLs, local /uploads files, or remote URLs into a direct HTTP image for WhatsApp/Social crawlers
+  app.get('/api/og-image/:coupleParam', async (req, res) => {
+    try {
+      const rawParam = req.params.coupleParam || '';
+      const cleanId = rawParam.replace(/\.(jpg|jpeg|png|webp)$/i, '');
+      req.query.casal = cleanId;
+      const couple = await resolveCoupleForRequest(req);
+      const coverImage: string = couple?.eventInfo?.coverImage || db?.eventInfo?.coverImage || '';
+
+      if (coverImage.startsWith('data:image/')) {
+        const matches = coverImage.match(/^data:([A-Za-z-+/]+);base64,(.+)$/);
+        if (matches && matches.length === 3) {
+          const mimeType = matches[1] || 'image/jpeg';
+          const buffer = Buffer.from(matches[2], 'base64');
+          res.setHeader('Content-Type', mimeType);
+          res.setHeader('Cache-Control', 'public, max-age=3600');
+          return res.send(buffer);
+        }
+      }
+
+      if (coverImage.startsWith('/uploads/')) {
+        const fileName = path.basename(coverImage);
+        const localFile = path.join(UPLOADS_DIR, fileName);
+        if (fs.existsSync(localFile)) {
+          res.setHeader('Cache-Control', 'public, max-age=3600');
+          return res.sendFile(localFile);
+        }
+      }
+
+      if (coverImage.startsWith('http://') || coverImage.startsWith('https://')) {
+        return res.redirect(302, coverImage);
+      }
+
+      return res.redirect(302, DEFAULT_COUPLE_PHOTO);
+    } catch (err) {
+      console.error('Error serving OG image:', err);
+      return res.redirect(302, DEFAULT_COUPLE_PHOTO);
+    }
+  });
+
   // Favicon handler
   app.get(['/favicon.ico', '/favicon.svg'], (req, res) => {
     const faviconPath = path.join(process.cwd(), 'public', 'favicon.svg');
@@ -396,11 +606,40 @@ async function startServer() {
       server: { middlewareMode: true },
       appType: 'spa',
     });
+
+    app.use(async (req, res, next) => {
+      if (req.method !== 'GET') return next();
+      const p = req.path;
+      if (
+        p.startsWith('/api/') ||
+        p.startsWith('/uploads/') ||
+        p.startsWith('/src/') ||
+        p.startsWith('/@') ||
+        p.startsWith('/node_modules/') ||
+        /\.(js|mjs|ts|tsx|css|json|png|jpg|jpeg|gif|svg|ico|woff|woff2|ttf|map)$/i.test(p)
+      ) {
+        return next();
+      }
+
+      try {
+        const indexPath = path.join(process.cwd(), 'index.html');
+        if (!fs.existsSync(indexPath)) return next();
+        const rawHtml = fs.readFileSync(indexPath, 'utf-8');
+        const transformed = await vite.transformIndexHtml(req.originalUrl, rawHtml);
+        const couple = await resolveCoupleForRequest(req);
+        const finalHtml = injectCoupleOgTags(transformed, req, couple);
+        res.status(200).set({ 'Content-Type': 'text/html; charset=utf-8' }).end(finalHtml);
+      } catch (e) {
+        next(e);
+      }
+    });
+
     app.use(vite.middlewares);
   } else {
     const distPath = path.join(process.cwd(), 'dist');
     if (fs.existsSync(distPath)) {
       app.use(express.static(distPath, {
+        index: false,
         setHeaders: (res, filepath) => {
           if (filepath.endsWith('index.html')) {
             res.setHeader('Cache-Control', 'no-cache, no-store, must-revalidate, max-age=0');
@@ -410,9 +649,7 @@ async function startServer() {
         }
       }));
     }
-    app.get('*', (req, res) => {
-      // If the request is for an asset or script module, return 404 instead of index.html
-      // to prevent "Strict MIME type checking" errors in the browser when assets are missing or cached
+    app.get('*', async (req, res) => {
       const isAsset = req.path.startsWith('/assets/') || 
                       req.path.startsWith('/src/') || 
                       /\.(js|mjs|ts|tsx|css|json|png|jpg|jpeg|gif|svg|ico|woff|woff2|ttf|map)$/i.test(req.path);
@@ -423,7 +660,14 @@ async function startServer() {
       const indexPath = path.join(distPath, 'index.html');
       if (fs.existsSync(indexPath)) {
         res.setHeader('Cache-Control', 'no-cache, no-store, must-revalidate, max-age=0');
-        res.sendFile(indexPath);
+        try {
+          const rawHtml = fs.readFileSync(indexPath, 'utf-8');
+          const couple = await resolveCoupleForRequest(req);
+          const finalHtml = injectCoupleOgTags(rawHtml, req, couple);
+          return res.status(200).set({ 'Content-Type': 'text/html; charset=utf-8' }).send(finalHtml);
+        } catch {
+          return res.sendFile(indexPath);
+        }
       } else {
         res.status(404).send('Application build files not found.');
       }

@@ -9,6 +9,7 @@ interface LoginPageProps {
   onLoginSuccess: (name: string, email: string, provider: 'google' | 'email') => void;
   onLogoutGuest: () => void;
   onNavigate: (route: 'home' | 'casal' | 'presentes' | 'login' | 'noiva' | 'superadmin') => void;
+  isPresenceConfirmed?: boolean;
 }
 
 export const LoginPage: React.FC<LoginPageProps> = ({
@@ -16,7 +17,8 @@ export const LoginPage: React.FC<LoginPageProps> = ({
   eventInfo,
   onLoginSuccess,
   onLogoutGuest,
-  onNavigate
+  onNavigate,
+  isPresenceConfirmed = false,
 }) => {
   // Primary Role Switcher: 'convidado' vs 'casal'
   const [activeRole, setActiveRole] = useState<'convidado' | 'casal'>('convidado');
@@ -241,7 +243,7 @@ export const LoginPage: React.FC<LoginPageProps> = ({
               Identificação do <span className="text-[#C5A059]">Convidado</span>
             </h1>
             <p className="text-xs text-[#2D2D2D]/80 font-medium max-w-sm mx-auto">
-              Identifique-se para dar presentes, enviar um recado e confirmar sua presença no evento.
+              Identifique-se e confirme sua presença para liberar a lista de presentes do casal e enviar seu recado.
             </p>
           </div>
 
@@ -266,20 +268,36 @@ export const LoginPage: React.FC<LoginPageProps> = ({
                 )}
               </div>
 
+              {!isPresenceConfirmed && (
+                <div className="p-3.5 bg-amber-50 border border-amber-200 rounded-2xl text-xs text-amber-900 font-medium max-w-sm mx-auto">
+                  Para visualizar a <strong>Lista de Presentes</strong>, confirme primeiro a sua presença no evento.
+                </div>
+              )}
+
               <div className="pt-2 space-y-3 max-w-sm mx-auto">
-                <button
-                  onClick={() => onNavigate('presentes')}
-                  className="w-full py-4 px-5 bg-[#2D2D2D] hover:bg-black text-white text-xs font-bold uppercase tracking-[0.15em] rounded-2xl transition flex items-center justify-center space-x-2 shadow-md active:scale-95 cursor-pointer min-h-[48px]"
-                >
-                  <Sparkles className="w-4 h-4 text-[#C5A059]" />
-                  <span>Ver Lista de Presentes</span>
-                </button>
+                {isPresenceConfirmed ? (
+                  <button
+                    onClick={() => onNavigate('presentes')}
+                    className="w-full py-4 px-5 bg-[#2D2D2D] hover:bg-black text-white text-xs font-bold uppercase tracking-[0.15em] rounded-2xl transition flex items-center justify-center space-x-2 shadow-md active:scale-95 cursor-pointer min-h-[48px]"
+                  >
+                    <Sparkles className="w-4 h-4 text-[#C5A059]" />
+                    <span>Ver Lista de Presentes</span>
+                  </button>
+                ) : (
+                  <button
+                    onClick={() => onNavigate('casal')}
+                    className="w-full py-4 px-5 bg-[#C5A059] hover:bg-[#B38F48] text-white text-xs font-bold uppercase tracking-[0.15em] rounded-2xl transition flex items-center justify-center space-x-2 shadow-md active:scale-95 cursor-pointer min-h-[48px]"
+                  >
+                    <CheckCircle2 className="w-4 h-4 text-white" />
+                    <span>Confirmar Presença para Liberar Lista</span>
+                  </button>
+                )}
 
                 <button
                   onClick={() => onNavigate('casal')}
                   className="w-full py-3.5 px-5 bg-[#F2ECE4] hover:bg-[#E5DFD5] text-[#2D2D2D] text-xs font-bold uppercase tracking-[0.15em] rounded-2xl border border-[#E5DFD5] transition flex items-center justify-center space-x-2 active:scale-95 cursor-pointer min-h-[48px]"
                 >
-                  <span>Ver Página do Casal</span>
+                  <span>Ver Perfil do Casal</span>
                   <ArrowRight className="w-4 h-4 text-[#C5A059]" />
                 </button>
               </div>

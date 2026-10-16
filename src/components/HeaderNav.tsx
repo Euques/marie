@@ -169,14 +169,14 @@ export const HeaderNav: React.FC<HeaderNavProps> = ({
                   }`}
                 >
                   <div className="flex items-center space-x-3">
-                    {isPresenceConfirmed || isCoupleAdmin || isSuperAdmin ? (
+                    {(Boolean(guestSession) && isPresenceConfirmed) || isCoupleAdmin || isSuperAdmin ? (
                       <Gift className="w-4 h-4 text-[#C5A059]" />
                     ) : (
                       <Lock className="w-4 h-4 text-amber-600" />
                     )}
                     <span>Lista de Presentes</span>
                   </div>
-                  {isPresenceConfirmed || isCoupleAdmin || isSuperAdmin ? (
+                  {(Boolean(guestSession) && isPresenceConfirmed) || isCoupleAdmin || isSuperAdmin ? (
                     availableGiftsCount > 0 && (
                       <span className="bg-[#C5A059] text-white text-xs font-black px-2.5 py-0.5 rounded-full">
                         {availableGiftsCount} disponíveis
@@ -184,7 +184,7 @@ export const HeaderNav: React.FC<HeaderNavProps> = ({
                     )
                   ) : (
                     <span className="bg-amber-100 text-amber-800 text-[10px] font-bold px-2 py-0.5 rounded-full border border-amber-200">
-                      Requer Presença
+                      {!guestSession ? 'Requer Login + Presença' : 'Requer Presença'}
                     </span>
                   )}
                 </button>
