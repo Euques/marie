@@ -143,11 +143,37 @@ export default function App() {
   // Listen to browser popstate (back/forward buttons)
   useEffect(() => {
     const handlePopState = () => {
-      setCurrentRoute(getRouteFromPath(window.location.pathname, window.location.search));
+      const newRoute = getRouteFromPath(window.location.pathname, window.location.search);
+      setCurrentRoute(newRoute);
+
+      const urlParams = new URLSearchParams(window.location.search);
+      const urlCoupleId = urlParams.get('casal') || urlParams.get('couple') || urlParams.get('c');
+      const pathSlug = extractSlugFromPath(window.location.pathname);
+      const targetParam = urlCoupleId || pathSlug;
+
+      if (targetParam && registeredCouples.length > 0) {
+        const found = registeredCouples.find(
+          c =>
+            c.id === targetParam ||
+            c.aliasIds?.includes(targetParam) ||
+            getCoupleSlug(c.eventInfo?.brideName, c.eventInfo?.groomName) === targetParam.toLowerCase()
+        );
+        if (found) {
+          setSelectedCoupleId(found.id);
+          try {
+            localStorage.setItem('cha_selected_couple_id', found.id);
+          } catch {}
+          setData({
+            eventInfo: found.eventInfo,
+            gifts: found.gifts || [],
+            guests: found.guests || []
+          });
+        }
+      }
     };
     window.addEventListener('popstate', handlePopState);
     return () => window.removeEventListener('popstate', handlePopState);
-  }, []);
+  }, [registeredCouples]);
 
   // Dynamically keep OpenGraph (OG), Twitter Cards, and document title synced with the active couple
   useEffect(() => {
@@ -274,33 +300,32 @@ export default function App() {
       const urlParams = new URLSearchParams(window.location.search);
       const urlCoupleId = urlParams.get('casal') || urlParams.get('couple') || urlParams.get('c');
       const pathSlug = extractSlugFromPath(window.location.pathname);
-      const activeId = urlCoupleId || selectedCoupleId;
-      let matched = activeId
-        ? couplesList.find(
-            c =>
-              c.id === activeId ||
-              c.aliasIds?.includes(activeId) ||
-              getCoupleSlug(c.eventInfo?.brideName, c.eventInfo?.groomName) === activeId.toLowerCase()
-          )
-        : undefined;
+      const targetParam = urlCoupleId || pathSlug;
 
-      if (!matched && pathSlug) {
+      let matched: CoupleProfile | undefined;
+      if (targetParam) {
         matched = couplesList.find(
-          c => getCoupleSlug(c.eventInfo?.brideName, c.eventInfo?.groomName) === pathSlug
+          c =>
+            c.id === targetParam ||
+            c.aliasIds?.includes(targetParam) ||
+            getCoupleSlug(c.eventInfo?.brideName, c.eventInfo?.groomName) === targetParam.toLowerCase()
         );
+      } else if (selectedCoupleId && window.location.pathname !== '/') {
+        matched = couplesList.find(c => c.id === selectedCoupleId);
       }
 
       if (matched && matched.eventInfo) {
-        if (matched.id && matched.id !== selectedCoupleId && (urlCoupleId || pathSlug)) {
+        if (matched.id && matched.id !== selectedCoupleId) {
           setSelectedCoupleId(matched.id);
-          localStorage.setItem('cha_selected_couple_id', matched.id);
+          try {
+            localStorage.setItem('cha_selected_couple_id', matched.id);
+          } catch {}
         }
-        setData(prev => ({
-          ...prev,
-          eventInfo: matched.eventInfo || prev.eventInfo,
-          gifts: matched.gifts || prev.gifts,
-          guests: matched.guests || prev.guests
-        }));
+        setData({
+          eventInfo: matched.eventInfo,
+          gifts: matched.gifts || [],
+          guests: matched.guests || []
+        });
       }
     });
     return () => unsubAll();
@@ -336,6 +361,29 @@ export default function App() {
       window.history.pushState({}, '', path);
     }
     setCurrentRoute(route);
+    window.scrollTo({ top: 0, behavior: 'smooth' });
+  };
+
+  const handleOpenCoupleFromLanding = (couple: CoupleProfile) => {
+    const coupleId = couple.id;
+    const slug = getCoupleSlug(couple.eventInfo?.brideName, couple.eventInfo?.groomName);
+    const coupleUrl = `/casal/${slug}?casal=${encodeURIComponent(coupleId)}`;
+    
+    setSelectedCoupleId(coupleId);
+    try {
+      localStorage.setItem('cha_selected_couple_id', coupleId);
+    } catch {}
+
+    setData({
+      eventInfo: couple.eventInfo,
+      gifts: couple.gifts || [],
+      guests: couple.guests || []
+    });
+
+    if (window.location.pathname + window.location.search !== coupleUrl) {
+      window.history.pushState({}, '', coupleUrl);
+    }
+    setCurrentRoute('casal');
     window.scrollTo({ top: 0, behavior: 'smooth' });
   };
 
@@ -1105,18 +1153,7 @@ export default function App() {
           <LandingPage 
             couples={registeredCouples}
             onNavigate={navigate}
-            onSelectCouple={(id) => {
-              setSelectedCoupleId(id);
-              localStorage.setItem('cha_selected_couple_id', id);
-              const found = registeredCouples.find(c => c.id === id);
-              if (found) {
-                setData({
-                  eventInfo: found.eventInfo,
-                  gifts: found.gifts || [],
-                  guests: found.guests || []
-                });
-              }
-            }}
+            onSelectCouple={handleOpenCoupleFromLanding}
           />
         )}
 
@@ -1134,6 +1171,9 @@ export default function App() {
                     gifts: found.gifts || [],
                     guests: found.guests || []
                   });
+                  const slug = getCoupleSlug(found.eventInfo?.brideName, found.eventInfo?.groomName);
+                  const coupleUrl = `/casal/${slug}?casal=${encodeURIComponent(id)}`;
+                  window.history.pushState({}, '', coupleUrl);
                 }
               }}
             />
@@ -1141,18 +1181,7 @@ export default function App() {
             <LandingPage 
               couples={registeredCouples}
               onNavigate={navigate}
-              onSelectCouple={(id) => {
-                setSelectedCoupleId(id);
-                localStorage.setItem('cha_selected_couple_id', id);
-                const found = registeredCouples.find(c => c.id === id);
-                if (found) {
-                  setData({
-                    eventInfo: found.eventInfo,
-                    gifts: found.gifts || [],
-                    guests: found.guests || []
-                  });
-                }
-              }}
+              onSelectCouple={handleOpenCoupleFromLanding}
             />
           )
         )}

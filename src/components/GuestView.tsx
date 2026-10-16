@@ -897,13 +897,15 @@ export const GuestView: React.FC<GuestViewProps> = ({
                         </p>
                       </div>
                     </div>
-                    <button
-                      onClick={() => setIsCustomGiftModalOpen(true)}
-                      className="px-3.5 py-2 bg-[#FAF9F6] hover:bg-[#F2ECE4] text-[#2D2D2D] border border-[#E5DFD5] font-bold text-[9px] uppercase tracking-widest rounded-xl transition flex items-center space-x-1 shrink-0"
-                    >
-                      <Sparkles className="w-3.5 h-3.5 text-[#C5A059]" />
-                      <span>Sugerir Presente</span>
-                    </button>
+                    {Boolean(eventInfo?.bridePhone && eventInfo.bridePhone.trim().replace(/\D/g, '').length >= 8) && (
+                      <button
+                        onClick={() => setIsCustomGiftModalOpen(true)}
+                        className="px-3.5 py-2 bg-[#FAF9F6] hover:bg-[#F2ECE4] text-[#2D2D2D] border border-[#E5DFD5] font-bold text-[9px] uppercase tracking-widest rounded-xl transition flex items-center space-x-1 shrink-0 cursor-pointer"
+                      >
+                        <Sparkles className="w-3.5 h-3.5 text-[#C5A059]" />
+                        <span>Sugerir Presente</span>
+                      </button>
+                    )}
                   </div>
 
                   {/* Search and Filters */}

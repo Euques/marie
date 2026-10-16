@@ -1,6 +1,8 @@
 import React, { useState } from 'react';
 import { Share2, Home, Heart, Gift, User, Crown, Terminal, Menu, X, UserCheck, Sparkles, Check, Lock } from 'lucide-react';
 import { AppRoute, EventInfo, GuestAuthSession } from '../types';
+import { getEventCategoryLabel } from '../lib/formatters';
+import { usePhotoTone } from '../lib/usePhotoTone';
 
 interface HeaderNavProps {
   currentRoute: AppRoute;
@@ -24,6 +26,10 @@ export const HeaderNav: React.FC<HeaderNavProps> = ({
   isPresenceConfirmed = false,
 }) => {
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
+  const photoTone = usePhotoTone(eventInfo?.coverImage);
+  const logoBgStyle = photoTone 
+    ? { background: `linear-gradient(135deg, ${photoTone}, #1C1917)` } 
+    : { background: 'linear-gradient(135deg, #B88E3E, #785A20)' };
 
   const loggedEmail = (guestSession?.email || '').toLowerCase();
   const isSuperAdmin = loggedEmail === 'euques@gmail.com' && typeof window !== 'undefined' && sessionStorage.getItem('cha_superadmin_authenticated') === 'true';
@@ -61,16 +67,19 @@ export const HeaderNav: React.FC<HeaderNavProps> = ({
               </>
             ) : (
               <>
-                <div className="w-10 h-10 sm:w-11 sm:h-11 rounded-2xl bg-[#C5A059] flex items-center justify-center text-white shadow-md text-sm sm:text-base font-extrabold group-hover:scale-105 transition-transform shrink-0">
-                  {eventInfo.brideName?.[0] || 'P'}&{eventInfo.groomName?.[0] || 'M'}
+                <div 
+                  style={logoBgStyle}
+                  className="w-10 h-10 sm:w-11 sm:h-11 rounded-2xl flex items-center justify-center text-white shadow-md text-xs sm:text-sm font-extrabold tracking-wider group-hover:scale-105 transition-transform shrink-0 border border-white/30"
+                >
+                  {eventInfo.brideName?.[0] || 'N'}&{eventInfo.groomName?.[0] || 'N'}
                 </div>
                 <div className="min-w-0">
-                  <h1 className="text-xs sm:text-base font-extrabold text-[#2D2D2D] tracking-tight leading-tight truncate max-w-[130px] xs:max-w-[190px] sm:max-w-none">
-                    {eventInfo.eventTitle || 'Chá de Panela'}
-                  </h1>
-                  <p className="text-[10px] sm:text-[11px] font-bold uppercase tracking-wider text-[#C5A059] truncate max-w-[130px] xs:max-w-[190px] sm:max-w-none">
+                  <span className="text-[9px] sm:text-[10px] font-extrabold uppercase tracking-[0.2em] text-[#C5A059] block leading-tight truncate">
+                    {getEventCategoryLabel(eventInfo.eventTitle)}
+                  </span>
+                  <h1 className="text-xs sm:text-base font-black text-[#2D2D2D] tracking-tight leading-tight truncate max-w-[140px] xs:max-w-[210px] sm:max-w-none">
                     {eventInfo.brideName} & {eventInfo.groomName}
-                  </p>
+                  </h1>
                 </div>
               </>
             )}
@@ -130,19 +139,21 @@ export const HeaderNav: React.FC<HeaderNavProps> = ({
           {/* Navigation Links List (Min 48px Touch Target) */}
           <div className="p-3 space-y-1.5">
             
-            <button
-              onClick={() => handleNavClick('home')}
-              className={`w-full px-4 py-3 rounded-2xl text-sm font-extrabold flex items-center justify-between transition-all min-h-[48px] active:scale-98 cursor-pointer ${
-                currentRoute === 'home'
-                  ? 'bg-[#2D2D2D] text-white shadow-xs'
-                  : 'text-[#2D2D2D] hover:bg-[#FAF9F6]'
-              }`}
-            >
-              <div className="flex items-center space-x-3">
-                <Home className="w-4 h-4 text-[#C5A059]" />
-                <span>Início (Todos os Chás)</span>
-              </div>
-            </button>
+            {isPlatformRoute && (
+              <button
+                onClick={() => handleNavClick('home')}
+                className={`w-full px-4 py-3 rounded-2xl text-sm font-extrabold flex items-center justify-between transition-all min-h-[48px] active:scale-98 cursor-pointer ${
+                  currentRoute === 'home'
+                    ? 'bg-[#2D2D2D] text-white shadow-xs'
+                    : 'text-[#2D2D2D] hover:bg-[#FAF9F6]'
+                }`}
+              >
+                <div className="flex items-center space-x-3">
+                  <Home className="w-4 h-4 text-[#C5A059]" />
+                  <span>Início (Todos os Chás)</span>
+                </div>
+              </button>
+            )}
 
             {!isPlatformRoute && (
               <>

@@ -63,6 +63,13 @@ export const GiftsPage: React.FC<GiftsPageProps> = ({
   // Custom Gift Modal
   const [isCustomGiftModalOpen, setIsCustomGiftModalOpen] = useState(false);
 
+  // Check if bride has registered WhatsApp phone (only show Sugerir Presente button if registered)
+  const hasBrideWhatsApp = useMemo(() => {
+    return Boolean(
+      eventInfo?.bridePhone && eventInfo.bridePhone.trim().replace(/\D/g, '').length >= 8
+    );
+  }, [eventInfo?.bridePhone]);
+
   // RSVP Form state for unconfirmed guests
   const [rsvpName, setRsvpName] = useState(guestSession?.name || '');
   const [rsvpEmail, setRsvpEmail] = useState(guestSession?.email || '');
@@ -520,16 +527,18 @@ export const GiftsPage: React.FC<GiftsPageProps> = ({
           </div>
         </div>
 
-        <div className="flex items-center space-x-1.5 shrink-0">
-          <button
-            onClick={() => setIsCustomGiftModalOpen(true)}
-            className="px-3.5 py-2.5 bg-[#2D2D2D] hover:bg-black text-white font-bold text-[11px] uppercase tracking-wider rounded-xl transition flex items-center space-x-1.5 shadow-2xs active:scale-95 cursor-pointer"
-          >
-            <Sparkles className="w-3.5 h-3.5 text-[#C5A059]" />
-            <span className="hidden sm:inline">Sugerir Presente</span>
-            <span className="sm:hidden">Sugerir</span>
-          </button>
-        </div>
+        {hasBrideWhatsApp && (
+          <div className="flex items-center space-x-1.5 shrink-0">
+            <button
+              onClick={() => setIsCustomGiftModalOpen(true)}
+              className="px-3.5 py-2.5 bg-[#2D2D2D] hover:bg-black text-white font-bold text-[11px] uppercase tracking-wider rounded-xl transition flex items-center space-x-1.5 shadow-2xs active:scale-95 cursor-pointer"
+            >
+              <Sparkles className="w-3.5 h-3.5 text-[#C5A059]" />
+              <span className="hidden sm:inline">Sugerir Presente</span>
+              <span className="sm:hidden">Sugerir</span>
+            </button>
+          </div>
+        )}
       </div>
 
       {/* USER LOGGED IN BAR */}

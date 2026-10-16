@@ -1,5 +1,6 @@
 import React from 'react';
 import { AppRoute, CoupleProfile } from '../types';
+import { formatEventDate, getCoupleSlug, getCleanEventDisplayTitle } from '../lib/formatters';
 import { 
   Heart, Sparkles, Gift, Users, ArrowRight, 
   PlusCircle, Calendar, MapPin, Crown, Eye
@@ -8,7 +9,7 @@ import {
 interface LandingPageProps {
   onNavigate: (route: AppRoute) => void;
   couples: CoupleProfile[];
-  onSelectCouple: (coupleId: string) => void;
+  onSelectCouple: (couple: CoupleProfile) => void;
 }
 
 export const LandingPage: React.FC<LandingPageProps> = ({ 
@@ -94,13 +95,27 @@ export const LandingPage: React.FC<LandingPageProps> = ({
             {couples.map((couple) => {
               const info = couple.eventInfo;
               const brideGroomTitle = `${info.brideName || 'Noiva'} & ${info.groomName || 'Noivo'}`;
+              const displayTitle = getCleanEventDisplayTitle(info.eventTitle, info.brideName, info.groomName);
+              const slug = getCoupleSlug(info.brideName, info.groomName);
+              const coupleHref = `/casal/${slug}?casal=${encodeURIComponent(couple.id)}`;
+
+              const handleOpenCouple = (e?: React.MouseEvent) => {
+                if (e) e.preventDefault();
+                onSelectCouple(couple);
+              };
+
+              const formattedDate = formatEventDate(info.date);
+
               return (
                 <div 
                   key={couple.id}
                   className="bg-white rounded-[2rem] border border-[#E5DFD5] shadow-xs hover:shadow-md transition-all overflow-hidden flex flex-col justify-between group"
                 >
-                  {/* COVER IMAGE */}
-                  <div className="h-44 bg-[#F2ECE4] relative overflow-hidden flex items-center justify-center">
+                  {/* COVER IMAGE - CLICÁVEL COM LINK DIRETO PARA O CASAL */}
+                  <div 
+                    onClick={handleOpenCouple}
+                    className="h-44 bg-[#F2ECE4] relative overflow-hidden flex items-center justify-center cursor-pointer group/img"
+                  >
                     {info.coverImage ? (
                       <img 
                         src={info.coverImage} 
@@ -121,11 +136,14 @@ export const LandingPage: React.FC<LandingPageProps> = ({
                   {/* DETAILS */}
                   <div className="p-5 space-y-3 flex-1">
                     <div>
-                      <h3 className="text-xl font-extrabold text-[#2D2D2D] tracking-tight group-hover:text-[#C5A059] transition-colors">
+                      <h3 
+                        onClick={handleOpenCouple}
+                        className="text-xl font-extrabold text-[#2D2D2D] tracking-tight group-hover:text-[#C5A059] transition-colors cursor-pointer"
+                      >
                         {brideGroomTitle}
                       </h3>
                       <p className="text-xs font-semibold text-[#C5A059]">
-                        {info.eventTitle || 'Chá de Panela'}
+                        {displayTitle}
                       </p>
                     </div>
 
@@ -133,7 +151,7 @@ export const LandingPage: React.FC<LandingPageProps> = ({
                       {info.date && (
                         <div className="flex items-center space-x-2">
                           <Calendar className="w-3.5 h-3.5 text-[#C5A059] shrink-0" />
-                          <span>Data: {info.date} {info.time && `às ${info.time}`}</span>
+                          <span>Data: {formattedDate}{info.time && ` às ${info.time}`}</span>
                         </div>
                       )}
                       {info.location && (
@@ -145,31 +163,16 @@ export const LandingPage: React.FC<LandingPageProps> = ({
                     </div>
                   </div>
 
-                  {/* ACTION BUTTONS */}
-                  <div className="p-5 pt-0 grid grid-cols-2 gap-2">
-                    <button
-                      type="button"
-                      onClick={() => {
-                        onSelectCouple(couple.id);
-                        onNavigate('casal');
-                      }}
-                      className="w-full py-3 px-3 bg-[#FAF9F6] hover:bg-[#F2ECE4] border border-[#E5DFD5] text-[#2D2D2D] text-xs font-bold uppercase tracking-wider rounded-xl transition flex items-center justify-center space-x-1.5 cursor-pointer min-h-[44px]"
+                  {/* ACTION BUTTON - VER EVENTO COM ESTILO DE DESTAQUE DO ANTIGO BOTÃO PRESENTES */}
+                  <div className="p-5 pt-0">
+                    <a
+                      href={coupleHref}
+                      onClick={handleOpenCouple}
+                      className="w-full py-3.5 px-4 bg-[#2D2D2D] hover:bg-black active:scale-98 text-white text-xs font-bold uppercase tracking-wider rounded-xl transition flex items-center justify-center space-x-2 cursor-pointer shadow-xs min-h-[44px]"
                     >
-                      <Eye className="w-3.5 h-3.5 text-[#C5A059]" />
+                      <Eye className="w-4 h-4 text-[#C5A059]" />
                       <span>Ver Evento</span>
-                    </button>
-
-                    <button
-                      type="button"
-                      onClick={() => {
-                        onSelectCouple(couple.id);
-                        onNavigate('presentes');
-                      }}
-                      className="w-full py-3 px-3 bg-[#2D2D2D] hover:bg-black text-white text-xs font-bold uppercase tracking-wider rounded-xl transition flex items-center justify-center space-x-1.5 cursor-pointer shadow-xs min-h-[44px]"
-                    >
-                      <Gift className="w-3.5 h-3.5 text-[#C5A059]" />
-                      <span>Presentes</span>
-                    </button>
+                    </a>
                   </div>
                 </div>
               );

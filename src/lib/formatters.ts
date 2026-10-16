@@ -47,3 +47,36 @@ export function formatPhoneDigits(phone?: string): string {
   if (!phone) return '';
   return phone.replace(/\D/g, '');
 }
+
+export function getCoupleSlug(brideName?: string, groomName?: string): string {
+  const bride = (brideName || 'noiva').trim() || 'noiva';
+  const groom = (groomName || 'noivo').trim() || 'noivo';
+  return `${bride}-e-${groom}`
+    .toLowerCase()
+    .normalize('NFD')
+    .replace(/[\u0300-\u036f]/g, '')
+    .replace(/[^a-z0-9]+/g, '-')
+    .replace(/(^-|-$)/g, '');
+}
+
+export function getEventCategoryLabel(eventTitle?: string): string {
+  if (!eventTitle) return 'Chá de Panela';
+  const clean = eventTitle.trim();
+  const match = clean.match(/^(Chá\s+de\s+Panela|Chá\s+Bar|Chá\s+de\s+Casa\s+Nova|Chá\s+de\s+Cozinha|Chá\s+de\s+Lingerie|Casamento|Noivado)/i);
+  if (match) {
+    return match[1];
+  }
+  const deIndex = clean.toLowerCase().indexOf(' de ');
+  if (deIndex > 0) {
+    return clean.substring(0, deIndex).trim();
+  }
+  const daIndex = clean.toLowerCase().indexOf(' da ');
+  if (daIndex > 0) {
+    return clean.substring(0, daIndex).trim();
+  }
+  const doIndex = clean.toLowerCase().indexOf(' do ');
+  if (doIndex > 0) {
+    return clean.substring(0, doIndex).trim();
+  }
+  return clean;
+}
