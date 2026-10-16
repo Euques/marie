@@ -1,5 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { CoupleProfile } from '../types';
+import { formatEventDate } from '../lib/formatters';
 import { 
   firebaseConfig, testFirebaseConnection, auth, getAllCouplesFromFirestore, deleteCoupleFromFirestore, loginOrRegisterWithEmail, subscribeToAuthChanges, signOut 
 } from '../lib/firebase';
@@ -307,7 +308,7 @@ export const SuperAdminPanel: React.FC<SuperAdminPanelProps> = ({
                     </div>
 
                     <div className="flex flex-wrap items-center gap-3 text-xs text-[#2D2D2D]/70 font-medium">
-                      <span>📅 {c.eventInfo?.date || 'Sem data'}</span>
+                      <span>📅 {formatEventDate(c.eventInfo?.date)}</span>
                       <span>📍 {c.eventInfo?.location || 'Sem local'}</span>
                       <span>🎁 {claimedCount}/{coupleGifts.length} Presentes</span>
                       <span>👥 {coupleGuests.length} Convidados</span>

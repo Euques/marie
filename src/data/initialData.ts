@@ -162,7 +162,8 @@ export const initialData: AppData = {
     welcomeMessage: "Sejam bem-vindos ao nosso Chá de Panela! Escolha um presente da nossa lista ou confirme sua presença.",
     giftPreferencesGuide: "Oi queridos! Para ajudar na escolha, pensamos em uma cozinha com itens verde e amarelo, no quarto tons de marrom e azul, e no banheiro branco. Muito obrigado pelo carinho e presença!",
     coverImage: "https://images.unsplash.com/photo-1519741497674-611481863552?auto=format&fit=crop&w=1200&q=80",
-    adminPassword: "1234"
+    adminPassword: "1234",
+    bridePhone: "11987654321"
   },
   guests: [],
   gifts: TEMPLATE_GIFTS.map((g, idx) => ({

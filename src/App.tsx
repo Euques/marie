@@ -8,6 +8,7 @@ import { AdminPanel } from './components/AdminPanel';
 import { LandingPage } from './components/LandingPage';
 import { SuperAdminPanel } from './components/SuperAdminPanel';
 import { HeaderNav } from './components/HeaderNav';
+import { formatEventDate, getCleanEventDisplayTitle } from './lib/formatters';
 import { Heart, Sparkles, ArrowLeft, Home, User, Gift as GiftIcon, ShieldCheck, Menu, X, Terminal } from 'lucide-react';
 import { 
   subscribeToAuthChanges, 
@@ -156,25 +157,21 @@ export default function App() {
     const isPlatformView = currentRoute === 'home' || currentRoute === 'superadmin';
     const bride = (info?.brideName || 'Noiva').trim();
     const groom = (info?.groomName || 'Noivo').trim();
-    const coupleNames = groom ? `${bride} & ${groom}` : bride;
-    const eventTitle = (info?.eventTitle || 'Chá de Panela').trim();
+    const rawTitle = (info?.eventTitle || 'Chá de Panela').trim();
+    const cleanTitle = getCleanEventDisplayTitle(rawTitle, bride, groom);
     const slug = getCoupleSlug(bride, groom);
     const activeId = selectedCoupleId || (info?.id && info.id !== 'main' ? info.id : '');
 
     const title = isPlatformView
       ? 'Chá de Panela — Plataforma de Eventos, Convites e Lista de Presentes'
-      : `${eventTitle} de ${coupleNames} | Convite & Lista de Presentes`;
+      : `${cleanTitle} | Convite & Lista de Presentes`;
 
-    const dateFormatted = info?.date
-      ? info.date.split('-').length === 3
-        ? `${info.date.split('-')[2]}/${info.date.split('-')[1]}/${info.date.split('-')[0]}`
-        : info.date
-      : '';
-    const datePart = dateFormatted ? ` 📅 Data: ${dateFormatted}${info?.time ? ` às ${info.time}` : ''}.` : '';
+    const dateFormatted = formatEventDate(info?.date);
+    const datePart = dateFormatted && dateFormatted !== 'A definir' ? ` 📅 Data: ${dateFormatted}${info?.time ? ` às ${info.time}` : ''}.` : '';
     const locPart = info?.location ? ` 📍 Local: ${info.location}.` : '';
     const description = isPlatformView
       ? 'Painel completo para noivas organizarem o chá de panela, gerenciarem lista de convidados, confirmações (RSVP) e lista de presentes interativa para convidados.'
-      : `Você foi convidado(a) para o ${eventTitle} de ${coupleNames}!${datePart}${locPart} Acesse o perfil do casal para confirmar sua presença e visualizar a lista de presentes.`;
+      : `Você foi convidado(a) para o ${cleanTitle}!${datePart}${locPart} Acesse o perfil do casal para confirmar sua presença e visualizar a lista de presentes.`;
 
     let ogImageUrl = 'https://images.unsplash.com/photo-1522673607200-164d1b6ce486?auto=format&fit=crop&w=1200&q=80';
     if (!isPlatformView) {
@@ -209,7 +206,7 @@ export default function App() {
     setMeta('meta[property="og:image"]', 'property', 'og:image', ogImageUrl);
     setMeta('meta[property="og:image:secure_url"]', 'property', 'og:image:secure_url', ogImageUrl);
     setMeta('meta[property="og:url"]', 'property', 'og:url', canonicalUrl);
-    setMeta('meta[property="og:site_name"]', 'property', 'og:site_name', isPlatformView ? 'Chá de Panela' : `${eventTitle} • ${coupleNames}`);
+    setMeta('meta[property="og:site_name"]', 'property', 'og:site_name', isPlatformView ? 'Chá de Panela' : cleanTitle);
     setMeta('meta[name="twitter:title"]', 'name', 'twitter:title', title);
     setMeta('meta[name="twitter:description"]', 'name', 'twitter:description', description);
     setMeta('meta[name="twitter:image"]', 'name', 'twitter:image', ogImageUrl);

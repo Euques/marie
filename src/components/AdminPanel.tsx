@@ -4,6 +4,7 @@ import { GuestModal } from './GuestModal';
 import { GiftModal } from './GiftModal';
 import { GiftCatalogModal } from './GiftCatalogModal';
 import { CouplePhotoUploader } from './CouplePhotoUploader';
+import { formatEventDate, getCleanEventDisplayTitle } from '../lib/formatters';
 import { firebaseConfig, testFirebaseConnection, authenticateBrideAdminWithFirebase, loginWithGoogle, saveAdminToFirestore, saveCoupleToFirestore, getCoupleFromFirestore, auth, subscribeToAuthChanges, syncAllToFirestore, signOut } from '../lib/firebase';
 import { 
   Crown, Users, Gift as GiftIcon, CheckCircle2, Clock, XCircle, X,
@@ -360,8 +361,9 @@ export const AdminPanel: React.FC<AdminPanelProps> = ({
   const getWhatsAppMessage = (guestName?: string) => {
     const link = getCoupleInviteLink();
     const nameStr = guestName ? `Olá, ${guestName}! ` : '';
-    const brideGroom = eventInfo.brideName ? `${eventInfo.brideName}${eventInfo.groomName ? ` & ${eventInfo.groomName}` : ''}` : 'Noivos';
-    return `*Convite Especial de Chá de Panela* 🎉\n\n${nameStr}Você está convidado(a) para o *${eventInfo.eventTitle || 'Chá de Panela'}* de *${brideGroom}*!\n\n📅 *Data:* ${eventInfo.date || 'A definir'}\n⏰ *Horário:* ${eventInfo.time || 'A definir'}\n📍 *Local:* ${eventInfo.location || 'A definir'}\n\nAcesse o perfil do casal para confirmar sua presença e liberar a lista de presentes:\n👉 ${link}`;
+    const cleanTitle = getCleanEventDisplayTitle(eventInfo.eventTitle, eventInfo.brideName, eventInfo.groomName);
+    const formattedDate = formatEventDate(eventInfo.date);
+    return `*Convite Especial de Chá de Panela* 🎉\n\n${nameStr}Você está convidado(a) para o *${cleanTitle}*!\n\n📅 *Data:* ${formattedDate}\n⏰ *Horário:* ${eventInfo.time || 'A definir'}\n📍 *Local:* ${eventInfo.location || 'A definir'}\n\nAcesse o link do casal para confirmar sua presença e conferir a lista de presentes:\n👉 ${link}`;
   };
 
   const handleCopyWhatsAppInvite = (guestName?: string) => {
@@ -1501,10 +1503,10 @@ export const AdminPanel: React.FC<AdminPanelProps> = ({
                   {window.location.host}
                 </span>
                 <h4 className="font-bold text-sm text-[#2D2D2D] truncate">
-                  {eventInfo.eventTitle || 'Chá de Panela'} — {eventInfo.brideName} & {eventInfo.groomName}
+                  {getCleanEventDisplayTitle(eventInfo.eventTitle, eventInfo.brideName, eventInfo.groomName)}
                 </h4>
                 <p className="text-xs text-[#2D2D2D]/70 line-clamp-2">
-                  {eventInfo.welcomeMessage || 'Confirme sua presença e confira nossa lista de presentes especial!'}
+                  {`Você foi convidado(a) para o ${getCleanEventDisplayTitle(eventInfo.eventTitle, eventInfo.brideName, eventInfo.groomName)}! 📅 Data: ${formatEventDate(eventInfo.date)}. Acesse o perfil do casal, confirme sua presença e confira a lista de presentes.`}
                 </p>
                 <span className="text-[11px] font-mono text-[#C5A059] truncate pt-1">
                   {getCoupleInviteLink()}
@@ -1599,6 +1601,26 @@ export const AdminPanel: React.FC<AdminPanelProps> = ({
                 onChange={e => setEventForm({ ...eventForm, eventTitle: e.target.value })}
                 className="w-full px-4 py-2.5 text-sm border border-[#E5DFD5] bg-[#FAF9F6] rounded-2xl focus:border-[#C5A059] outline-none transition"
               />
+            </div>
+
+            <div>
+              <label className="block text-[10px] font-bold text-[#2D2D2D] uppercase tracking-[0.15em] mb-1.5 flex items-center justify-between">
+                <span className="flex items-center space-x-1.5">
+                  <Phone className="w-3.5 h-3.5 text-[#C5A059]" />
+                  <span>WhatsApp da Noiva (para receber sugestões de presentes)</span>
+                </span>
+                <span className="text-[#C5A059] font-normal normal-case text-[10px]">Sugestões dos Convidados</span>
+              </label>
+              <input 
+                type="tel"
+                placeholder="Ex: (21) 99999-9999 ou 21999999999"
+                value={eventForm.bridePhone || ''}
+                onChange={e => setEventForm({ ...eventForm, bridePhone: e.target.value })}
+                className="w-full px-4 py-2.5 text-sm border border-[#E5DFD5] bg-[#FAF9F6] rounded-2xl focus:border-[#C5A059] outline-none transition"
+              />
+              <p className="text-[10px] text-[#2D2D2D]/60 mt-1 font-sans">
+                Quando os convidados clicarem em "Sugerir Presente", a mensagem será enviada diretamente para este número de WhatsApp.
+              </p>
             </div>
 
             <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
@@ -2004,6 +2026,20 @@ export const AdminPanel: React.FC<AdminPanelProps> = ({
                   required
                   value={eventForm.eventTitle}
                   onChange={e => setEventForm({ ...eventForm, eventTitle: e.target.value })}
+                  className="w-full px-4 py-3 text-base sm:text-sm border border-[#E5DFD5] bg-[#FAF9F6] rounded-2xl focus:border-[#C5A059] focus:bg-white outline-none transition font-sans"
+                />
+              </div>
+
+              <div>
+                <label className="block text-[10px] sm:text-xs font-bold text-[#2D2D2D] uppercase tracking-[0.15em] mb-1.5 flex items-center space-x-1.5">
+                  <Phone className="w-3.5 h-3.5 text-[#C5A059]" />
+                  <span>WhatsApp da Noiva (para receber sugestões de presentes)</span>
+                </label>
+                <input 
+                  type="tel"
+                  placeholder="Ex: (21) 99999-9999 ou 21999999999"
+                  value={eventForm.bridePhone || ''}
+                  onChange={e => setEventForm({ ...eventForm, bridePhone: e.target.value })}
                   className="w-full px-4 py-3 text-base sm:text-sm border border-[#E5DFD5] bg-[#FAF9F6] rounded-2xl focus:border-[#C5A059] focus:bg-white outline-none transition font-sans"
                 />
               </div>

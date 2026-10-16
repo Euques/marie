@@ -1090,15 +1090,15 @@ export const GiftsPage: React.FC<GiftsPageProps> = ({
         </div>
       )}
 
-      {/* CUSTOM GIFT MODAL */}
+      {/* CUSTOM GIFT MODAL - SUGGEST TO BRIDE'S WHATSAPP */}
       <CustomGiftModal
         isOpen={isCustomGiftModalOpen}
         guestName={displayedGuestName}
+        isGuestView={true}
+        brideName={eventInfo?.brideName}
+        bridePhone={eventInfo?.bridePhone}
+        pixKey={eventInfo?.pixKey}
         onClose={() => setIsCustomGiftModalOpen(false)}
-        onSubmit={async (data) => {
-          await onAddCustomGift(data);
-          setIsCustomGiftModalOpen(false);
-        }}
       />
     </div>
   );

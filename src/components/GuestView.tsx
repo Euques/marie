@@ -1115,12 +1115,15 @@ export const GuestView: React.FC<GuestViewProps> = ({
         onConfirm={onClaimGift}
       />
 
-      {/* Custom Gift Modal */}
+      {/* Custom Gift Modal - Suggest to Bride's WhatsApp */}
       <CustomGiftModal 
         isOpen={isCustomGiftModalOpen}
         onClose={() => setIsCustomGiftModalOpen(false)}
-        onAdd={onAddCustomGift}
         isGuestView={true}
+        guestName={guestSession?.name || rsvpName}
+        brideName={eventInfo?.brideName}
+        bridePhone={eventInfo?.bridePhone}
+        pixKey={eventInfo?.pixKey}
       />
 
       {/* Google Quick Sign-In Modal */}

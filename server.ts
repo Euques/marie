@@ -41,11 +41,36 @@ function escapeHtml(str: string): string {
 
 function formatDatePtBr(dateStr?: string): string {
   if (!dateStr) return '';
-  const parts = dateStr.split('-');
-  if (parts.length === 3) {
-    return `${parts[2]}/${parts[1]}/${parts[0]}`;
+  const clean = String(dateStr).trim();
+  if (/^\d{2}\/\d{2}\/\d{4}$/.test(clean)) return clean;
+  const match = clean.match(/^(\d{4})-(\d{1,2})-(\d{1,2})/);
+  if (match) {
+    const [, year, month, day] = match;
+    return `${day.padStart(2, '0')}/${month.padStart(2, '0')}/${year}`;
   }
-  return dateStr;
+  return clean;
+}
+
+function getCleanEventDisplayTitle(eventTitle?: string, brideName?: string, groomName?: string): string {
+  const bride = (brideName || '').trim();
+  const groom = (groomName || '').trim();
+  const couple = groom ? `${bride} & ${groom}` : bride;
+  const title = (eventTitle || 'Chá de Panela').trim();
+
+  const normalize = (s: string) =>
+    s.toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g, '');
+
+  const titleNorm = normalize(title);
+  const brideNorm = normalize(bride);
+  const groomNorm = normalize(groom);
+
+  const hasBride = brideNorm.length >= 2 && titleNorm.includes(brideNorm);
+  const hasGroom = groomNorm.length >= 2 && titleNorm.includes(groomNorm);
+
+  if (hasBride || hasGroom || !couple) {
+    return title;
+  }
+  return `${title} de ${couple}`;
 }
 
 async function resolveCoupleForRequest(req: express.Request): Promise<any | null> {
@@ -95,6 +120,13 @@ async function resolveCoupleForRequest(req: express.Request): Promise<any | null
     if (foundBySlug) return foundBySlug;
   }
 
+  if (initialData && initialData.eventInfo) {
+    const initSlug = buildSlug(initialData.eventInfo.brideName, initialData.eventInfo.groomName);
+    if (pathSlug === initSlug || queryCoupleId === 'main') {
+      return { id: 'main', eventInfo: initialData.eventInfo, gifts: initialData.gifts, guests: initialData.guests };
+    }
+  }
+
   return null;
 }
 
@@ -108,17 +140,17 @@ function injectCoupleOgTags(html: string, req: express.Request, couple: any | nu
 
   const bride = (info.brideName || 'Noiva').trim();
   const groom = (info.groomName || 'Noivo').trim();
-  const coupleNames = groom ? `${bride} & ${groom}` : bride;
-  const eventTitle = (info.eventTitle || 'Chá de Panela').trim();
+  const rawTitle = (info.eventTitle || 'Chá de Panela').trim();
+  const cleanTitle = getCleanEventDisplayTitle(rawTitle, bride, groom);
   const slug = buildSlug(bride, groom);
   const coupleId = couple.id || info.id || '';
 
-  const pageTitle = `${eventTitle} de ${coupleNames} | Convite & Lista de Presentes`;
+  const pageTitle = `${cleanTitle} | Convite & Lista de Presentes`;
   const formattedDate = formatDatePtBr(info.date);
   const datePart = formattedDate ? ` 📅 Data: ${formattedDate}${info.time ? ` às ${info.time}` : ''}.` : '';
   const locationPart = info.location ? ` 📍 Local: ${info.location}.` : '';
   const welcomePart = info.welcomeMessage ? ` "${info.welcomeMessage.slice(0, 90)}"` : '';
-  const description = `Você foi convidado(a) para o ${eventTitle} de ${coupleNames}!${datePart}${locationPart}${welcomePart} Acesse o perfil do casal, confirme sua presença e veja a lista de presentes.`;
+  const description = `Você foi convidado(a) para o ${cleanTitle}!${datePart}${locationPart}${welcomePart} Acesse o perfil do casal, confirme sua presença e veja a lista de presentes.`;
 
   let ogImageUrl = `${origin}/api/og-image/${encodeURIComponent(coupleId || slug)}.jpg`;
   if (info.coverImage && (info.coverImage.startsWith('http://') || info.coverImage.startsWith('https://'))) {
@@ -135,7 +167,7 @@ function injectCoupleOgTags(html: string, req: express.Request, couple: any | nu
   const safeDesc = escapeHtml(description);
   const safeImage = escapeHtml(ogImageUrl);
   const safeUrl = escapeHtml(canonicalUrl);
-  const safeSiteName = escapeHtml(`${eventTitle} • ${coupleNames}`);
+  const safeSiteName = escapeHtml(cleanTitle);
 
   let updated = html;
   updated = updated.replace(/<title>[\s\S]*?<\/title>/i, `<title>${safeTitle}</title>`);

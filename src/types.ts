@@ -32,6 +32,7 @@ export interface EventInfo {
   coverImage?: string;
   adminPassword?: string;
   adminEmail?: string;
+  bridePhone?: string;
   createdAt?: string;
   updatedAt?: string;
 }
